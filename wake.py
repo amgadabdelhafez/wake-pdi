@@ -1,20 +1,21 @@
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.chrome.service import Service
-
-from pyvirtualdisplay import Display
 import os
 import time
+
 import schedule
 import urllib3
+from pyvirtualdisplay import Display
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+from webdriver_manager.chrome import ChromeDriverManager
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# display = Display(visible=0, size=(800, 600))
-# display.start()
+display = Display(visible=0, size=(800, 600))
+display.start()
 
 instances = [
     {
@@ -34,14 +35,18 @@ def wake(username, passwerd):
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
-    # chrome_options.add_argument('--silent')
-    
+    chrome_options.add_argument('--disable-dev-shm-usage')
+    chrome_options.add_argument('--disable-extensions')                                                                                                                                  
+
+    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    chrome_options.add_experimental_option('useAutomationExtension', False)
 
     # chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])
     os.environ['WDM_SSL_VERIFY'] = '0'
     os.environ['WDM_LOG_LEVEL'] = '0'
-
-    driver = webdriver.Chrome(service = Service(ChromeDriverManager().install()))
+    # s = Service(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+    # driver = webdriver.Chrome(service = Service(ChromeDriverManager().install()))
     
     instance = "https://signon.service-now.com/ssologin.do?RelayState=%252Fapp%252Fservicenow_ud%252Fexks6phcbx6R8qjln0x7%252Fsso%252Fsaml%253FRelayState%253Dhttps%25253A%25252F%25252Fdeveloper.servicenow.com%25252Fnavpage.do&redirectUri=&email="
     print("Signing in User:".format(instance))
@@ -59,10 +64,10 @@ def wake(username, passwerd):
     name_input.click()
     time.sleep(1)
     name_input.send_keys(username)
-    # print("Filled in Username".format(instance))
+    print("Filled in Username".format(instance))
     time.sleep(2)
     name_submit.click()
-    # print("Clicked Username Submit Button".format(instance))
+    print("Clicked Username Submit Button".format(instance))
     WebDriverWait(driver, 10).until(
         EC.element_to_be_clickable(pass_input)
     )
@@ -70,12 +75,12 @@ def wake(username, passwerd):
     pass_input.click()
     time.sleep(1)
     pass_input.send_keys(passwerd)
-    # print("Filled in Pass".format(instance))
+    print("Filled in Pass".format(instance))
 
     time.sleep(2)
     login_button.click()
-    # print("Clicked Login Button".format(instance))
-    # print("waiting to redirect to dev portal".format(instance))
+    print("Clicked Login Button".format(instance))
+    print("waiting to redirect to dev portal".format(instance))
     WebDriverWait(driver, 30).until(
         EC.url_to_be('https://developer.servicenow.com/dev.do#!/home')
     )
@@ -98,7 +103,7 @@ def wake(username, passwerd):
     
     # Cleanup active browser.
     driver.quit()
-    # display.stop()
+    display.stop()
 # 
 
 # Loop through instances to wake.
