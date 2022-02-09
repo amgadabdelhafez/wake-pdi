@@ -9,38 +9,44 @@ from selenium.webdriver.chrome.service import Service
 from pyvirtualdisplay import Display
 import os
 import time
-# import schedule
+import schedule
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # display = Display(visible=0, size=(800, 600))
 # display.start()
 
-chrome_options = Options()
-chrome_options.add_argument("--headless")
-chrome_options.add_argument("--no-sandbox")
-
-os.environ['WDM_SSL_VERIFY'] = '0'
-
-driver = webdriver.Chrome(service = Service(ChromeDriverManager().install()))
-
 instances = [
     {
-        # "instance": "https://signon.service-now.com/ssologin.do",
-        # "instance": "https://dev113938.service-now.com/",
-        "instance": "https://signon.service-now.com/ssologin.do?RelayState=%252Fapp%252Fservicenow_ud%252Fexks6phcbx6R8qjln0x7%252Fsso%252Fsaml%253FRelayState%253Dhttps%25253A%25252F%25252Fdeveloper.servicenow.com%25252Fnavpage.do&redirectUri=&email=",
-        # "username": "tbmdemo@protonmail.com",
-        # "pass": "Efta7YaSn66^",
         "username": "aabdelhafez@paypal.com",
         "pass": "Efta7YaDev66^",
     },
+    {
+        "username": "tbmdemo@protonmail.com",
+        "pass": "Efta7YaSn66^",
+    },
 ]
 
-wakeuptime = '07:00'
+wakeuptime = '08:00'
 
 # Signin to instance via headless chromium to wake up.
-def wake(instance, username, passwerd):
-    print("URL ".format(instance))
-    print(instance.format(instance))
+def wake(username, passwerd):
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--no-sandbox")
+    # chrome_options.add_argument('--silent')
+    
 
+    # chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])
+    os.environ['WDM_SSL_VERIFY'] = '0'
+    os.environ['WDM_LOG_LEVEL'] = '0'
+
+    driver = webdriver.Chrome(service = Service(ChromeDriverManager().install()))
+    
+    instance = "https://signon.service-now.com/ssologin.do?RelayState=%252Fapp%252Fservicenow_ud%252Fexks6phcbx6R8qjln0x7%252Fsso%252Fsaml%253FRelayState%253Dhttps%25253A%25252F%25252Fdeveloper.servicenow.com%25252Fnavpage.do&redirectUri=&email="
+    print("Signing in User:".format(instance))
+    print(username.format(instance))
+    
     driver.get(instance)
 
     # Collect HTML Elements we'll be using
@@ -49,16 +55,14 @@ def wake(instance, username, passwerd):
     pass_input = driver.find_element(By.ID, "password")
     login_button = driver.find_element(By.ID, "submitButton")
 
-    
     # Sign In
     name_input.click()
     time.sleep(1)
     name_input.send_keys(username)
-    print("Filled in Username".format(instance))
+    # print("Filled in Username".format(instance))
     time.sleep(2)
     name_submit.click()
-    print("Clicked Username Submit Button".format(instance))
-    print("waiting for element_to_be_clickable(pass_input)".format(instance))
+    # print("Clicked Username Submit Button".format(instance))
     WebDriverWait(driver, 10).until(
         EC.element_to_be_clickable(pass_input)
     )
@@ -66,12 +70,12 @@ def wake(instance, username, passwerd):
     pass_input.click()
     time.sleep(1)
     pass_input.send_keys(passwerd)
-    print("Filled in Pass".format(instance))
+    # print("Filled in Pass".format(instance))
 
     time.sleep(2)
     login_button.click()
-    print("Clicked Login Button".format(instance))
-    print("waiting 30 seconds to redirect to https://developer.servicenow.com/dev.do#!/home".format(instance))
+    # print("Clicked Login Button".format(instance))
+    # print("waiting to redirect to dev portal".format(instance))
     WebDriverWait(driver, 30).until(
         EC.url_to_be('https://developer.servicenow.com/dev.do#!/home')
     )
@@ -89,10 +93,9 @@ def wake(instance, username, passwerd):
     print(instance_status.format(instance))
 
     # Save Img of signin proof.
-    driver.get_screenshot_as_file("capture.png")
+    # driver.get_screenshot_as_file("capture.png")
     print("Done, cleaning up.".format(instance))
-    time.sleep(20)
-
+    
     # Cleanup active browser.
     driver.quit()
     # display.stop()
@@ -101,7 +104,7 @@ def wake(instance, username, passwerd):
 # Loop through instances to wake.
 def sunsup():
     for inst in instances:
-        wake(inst["instance"], inst["username"], inst["pass"])
+        wake(inst["username"], inst["pass"])
 
 
 # # Set Schedule for continuous waking.
