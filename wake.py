@@ -18,25 +18,19 @@ chrome_options = Options()
 chrome_options.add_argument("--headless")
 chrome_options.add_argument("--no-sandbox")
 
-
-# driver= webdriver.Chrome()
-# driver = webdriver.Chrome(ChromeDriverManager().install())
 os.environ['WDM_SSL_VERIFY'] = '0'
-driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
-# driver = webdriver.Chrome("/home/gitpod/.wdm/drivers/chromedriver/linux64/98.0.4758.80/chromedriver")
 
-# driver = webdriver.Chrome(executable_path='/home/gitpod/.wdm/drivers/chromedriver/linux64/98.0.4758.80/chromedriver')
-
+driver = webdriver.Chrome(service = Service(ChromeDriverManager().install()))
 
 instances = [
     {
         # "instance": "https://signon.service-now.com/ssologin.do",
         # "instance": "https://dev113938.service-now.com/",
         "instance": "https://signon.service-now.com/ssologin.do?RelayState=%252Fapp%252Fservicenow_ud%252Fexks6phcbx6R8qjln0x7%252Fsso%252Fsaml%253FRelayState%253Dhttps%25253A%25252F%25252Fdeveloper.servicenow.com%25252Fnavpage.do&redirectUri=&email=",
-        "username": "tbmdemo@protonmail.com",
-        "pass": "Efta7YaSn66^",
-        # "username": "aabdelhafez@paypal.com",
-        # "pass": "Efta7YaDev66^",
+        # "username": "tbmdemo@protonmail.com",
+        # "pass": "Efta7YaSn66^",
+        "username": "aabdelhafez@paypal.com",
+        "pass": "Efta7YaDev66^",
     },
 ]
 
@@ -58,9 +52,10 @@ def wake(instance, username, passwerd):
     
     # Sign In
     name_input.click()
+    time.sleep(1)
     name_input.send_keys(username)
     print("Filled in Username".format(instance))
-    time.sleep(3)
+    time.sleep(2)
     name_submit.click()
     print("Clicked Username Submit Button".format(instance))
     print("waiting for element_to_be_clickable(pass_input)".format(instance))
@@ -68,38 +63,39 @@ def wake(instance, username, passwerd):
         EC.element_to_be_clickable(pass_input)
     )
 
-    # t.until(ExpectedConditions.visibilityOf(element));  
-    # t.until(ExpectedConditions.elementToBeClickable(element));
-
-    # time.sleep(5)  
     pass_input.click()
+    time.sleep(1)
     pass_input.send_keys(passwerd)
     print("Filled in Pass".format(instance))
-    time.sleep(3)
+
+    time.sleep(2)
     login_button.click()
     print("Clicked Login Button".format(instance))
-    print("waiting 10 seconds to redirect to https://developer.servicenow.com/dev.do#!/home".format(instance))
-
-    WebDriverWait(driver, 10).until(
+    print("waiting 30 seconds to redirect to https://developer.servicenow.com/dev.do#!/home".format(instance))
+    WebDriverWait(driver, 30).until(
         EC.url_to_be('https://developer.servicenow.com/dev.do#!/home')
     )
-    q = "return document.querySelector('dps-app').shadowRoot.querySelector('div').querySelector('header').querySelector('dps-navigation-header').shadowRoot.querySelector('header').querySelector('dps-navigation-header-dropdown').querySelector('dps-navigation-login-management').shadowRoot.querySelector('dps-navigation-header-dropdown-content').querySelector('dps-navigation-section').querySelector('dps-navigation-instance-management').shadowRoot.querySelector('dps-content-stack')"
-    instance_status = driver.execute_script(q).text
-    print("instance_status".format(instance))
-    print(instance_status.format(instance))
+    time.sleep(2)
+    # find the acount avatar
+    avatar_query = "return document.querySelector('dps-app').shadowRoot.querySelector('div').querySelector('header').querySelector('dps-navigation-header').shadowRoot.querySelector('header>div>div>ul>li>dps-login')"
+    WebDriverWait(driver, 10).until(
+        EC.element_to_be_clickable(driver.execute_script(avatar_query))
+    )
+    driver.execute_script(avatar_query).click()
+    time.sleep(2)
 
-    # instance_avatar = driver.find_element(By.XPATH, "/html/body/dps-app//div/header/dps-navigation-header//header/div/div[2]/ul/li[2]/dps-login//div/button/div")
-#   /html/body/dps-app//div/header/dps-navigation-header//header/div/div[2]/ul/li[2]/dps-login//div/button
-    # instance_avatar.click()
-    # /html/body/dps-app//div/header/dps-navigation-header//header/div/div[2]/ul/li[2]/dps-login//div/button/div
-    # instance_status = driver.find_element(By.XPATH, "/html/body/dps-app//div/header/dps-navigation-header//header/dps-navigation-header-dropdown/dps-navigation-login-management//dps-navigation-header-dropdown-content/dps-navigation-section[1]/dps-navigation-instance-management//div/div[1]/dps-content-stack[1]/p")
+    status_query = "return document.querySelector('dps-app').shadowRoot.querySelector('div').querySelector('header').querySelector('dps-navigation-header').shadowRoot.querySelector('header').querySelector('dps-navigation-header-dropdown').querySelector('dps-navigation-login-management').shadowRoot.querySelector('dps-navigation-header-dropdown-content').querySelector('dps-navigation-section').querySelector('dps-navigation-instance-management').shadowRoot.querySelector('dps-content-stack')"
+    instance_status = driver.execute_script(status_query).text
+    print(instance_status.format(instance))
 
     # Save Img of signin proof.
     driver.get_screenshot_as_file("capture.png")
     print("Done, cleaning up.".format(instance))
+    time.sleep(20)
+
     # Cleanup active browser.
     driver.quit()
-    display.stop()
+    # display.stop()
 # 
 
 # Loop through instances to wake.
