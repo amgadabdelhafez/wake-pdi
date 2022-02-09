@@ -1,3 +1,7 @@
-# To ensure app dependencies are ported from your virtual environment/host machine into your container, run 'pip freeze > requirements.txt' in the terminal to overwrite this file
-selenium
-webdriver_manager
+selenium==4.1.0
+libnss3
+urllib3==1.26.8
+webdriver-manager==3.5.2
+PyVirtualDisplay==2.2
+xvfbwrapper==0.2.9
+schedule==1.1.0
