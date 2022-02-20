@@ -2,6 +2,5 @@ selenium==4.1.0
 urllib3==1.26.8
 webdriver-manager==3.5.2
 PyVirtualDisplay==2.2
-xvfb==1.20.4
 xvfbwrapper==0.2.9
 schedule==1.1.0
