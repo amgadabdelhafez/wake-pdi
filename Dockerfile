@@ -10,7 +10,7 @@ ENV PYTHONUNBUFFERED=1
 RUN apt-get -y update
 RUN apt-get install -y wget \
     gnupg \
-	python3-pip \
+    python3-pip \
     xvfb \
     libnss3 \
     libxcb1 \
