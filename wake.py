@@ -1,7 +1,6 @@
 import sys
 import os
 import time
-import readline
 import getpass
 import schedule
 import urllib3
@@ -33,10 +32,8 @@ elif len(dotenv_values()) == 0:
     # if a .env file does not exist, create one
     # get username and password from user
     sn_dev_username = input("Please Enter Username (SN Dev Portal Email):") 
-    # "user@domain.com"
     sn_dev_password = getpass.getpass("Please Enter Password (SN Dev Portal Password):") 
-    # "CHANGE_ME!!"
-    
+
     # save into new .env file
     with open(".env", "w") as dot_env_file:
         dot_env_file.write("sn_dev_username=" + sn_dev_username + "\n")
