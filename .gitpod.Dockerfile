@@ -9,8 +9,8 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # Turns off buffering for easier container logging
 ENV PYTHONUNBUFFERED=1
 
-RUN sudo apt-get install -y apt-transport-https
-RUN sudo apt-get install -y  apt-utils 
+RUN sudo apt-get install -y apt-transport-https \
+    apt-utils 
 RUN sudo apt-get -y update
 RUN sudo apt-get install -y wget \
     gnupg \
