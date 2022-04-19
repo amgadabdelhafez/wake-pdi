@@ -1,6 +1,8 @@
 import sys
 import os
 import time
+import readline
+import getpass
 import schedule
 import urllib3
 from datetime import datetime
@@ -16,18 +18,33 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 # Command line parametes:
-# --env: config file with email and password
-# --headless: run headless
-# --verbose: print log 
+# --env:            override .env and use the arg
+# --silent:         don't print logs
+# --not-headless:   run headfull
 
+# if --env flag used it overrides default .env
 if '--env' in sys.argv:
     config = dotenv_values(sys.argv[sys.argv.index('--env') + 1])
-else:
-    os.putenv("username", "John")
-    os.putenv("email", "abc@gmail.com")
-    config = OrderedDict([("username", "user@domain.com"), ("password", "CHANGE_ME!!")])
+elif len(dotenv_values()) > 0:
+# if a .env file exists
+    config = dotenv_values()
+elif len(dotenv_values()) == 0:
+    # load_dotenv()
+    # if a .env file does not exist, create one
+    # get username and password from user
+    sn_dev_username = "user@domain.com" # input("Please Enter Username (SN Dev Portal Email):")
+    sn_dev_password = "CHANGE_ME!!"     # getpass.getpass("Please Enter Password (SN Dev Portal Password):")
+    # save into new .env file
+    with open(".env", "w") as dot_env_file:
+        dot_env_file.write("sn_dev_username=" + sn_dev_username + "\n")
+        dot_env_file.write("sn_dev_password=" + sn_dev_password + "\n")
 
-print(datetime.today().strftime("%Y-%m-%d"), datetime.now().strftime("%H:%M:%S"), "Account:", config["username"])
+    config = dotenv_values()
+
+silent = '--silent' in sys.argv    
+
+if not silent:
+    print(datetime.today().strftime("%Y-%m-%d"), datetime.now().strftime("%H:%M:%S"), "Account:", config["sn_dev_username"])
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -35,9 +52,9 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # display.start()
 
 # Signin to instance via headless chromium to wake up.
-def wake(username, passwerd):
+def wake(sn_dev_username, sn_dev_password):
     chrome_options = Options()
-    if '--headless' in sys.argv:
+    if '--not-headless' not in sys.argv:
         chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
@@ -60,7 +77,7 @@ def wake(username, passwerd):
     # Sign In
     # username input box
     driver.find_element(By.ID, "username").click()
-    driver.find_element(By.ID, "username").send_keys(username)
+    driver.find_element(By.ID, "username").send_keys(sn_dev_username)
     # username submit button
     driver.find_element(By.ID, "usernameSubmitButton").click()
     WebDriverWait(driver, 1).until(
@@ -68,7 +85,7 @@ def wake(username, passwerd):
     )
     # password input box
     driver.find_element(By.ID, "password").click()
-    driver.find_element(By.ID, "password").send_keys(passwerd)
+    driver.find_element(By.ID, "password").send_keys(sn_dev_password)
     # password submit button
     driver.find_element(By.ID, "submitButton").click()
     # wait to redirect to dev portal homepage
@@ -86,7 +103,8 @@ def wake(username, passwerd):
     # get instance status
     status_query = "return document.querySelector('dps-app').shadowRoot.querySelector('div').querySelector('header').querySelector('dps-navigation-header').shadowRoot.querySelector('header').querySelector('dps-navigation-header-dropdown').querySelector('dps-navigation-login-management').shadowRoot.querySelector('dps-navigation-header-dropdown-content').querySelector('dps-navigation-section').querySelector('dps-navigation-instance-management').shadowRoot.querySelector('dps-content-stack')"
     instance_status = driver.execute_script(status_query).text.split('\n')[1]
-    print(datetime.today().strftime('%Y-%m-%d'), datetime.now().strftime("%H:%M:%S"), "Instance status:", instance_status)
+    if not silent:
+        print(datetime.today().strftime('%Y-%m-%d'), datetime.now().strftime("%H:%M:%S"), "Instance status:", instance_status)
 
     # get instance name (only available when instance is online)
     if instance_status == 'Online':
@@ -99,7 +117,8 @@ def wake(username, passwerd):
         driver.execute_script(instance_name_query).find_element(By.XPATH, "li[6]").click()
         time.sleep(2)
         instance_name = driver.execute_script("return document.querySelector('dps-app').shadowRoot.querySelector('div').querySelector('header').querySelector('dps-instance-modal').shadowRoot.querySelector('dps-modal')").text.split('\n')[20]
-        print(datetime.today().strftime('%Y-%m-%d'), datetime.now().strftime("%H:%M:%S"), instance_name)
+        if not silent:
+            print(datetime.today().strftime('%Y-%m-%d'), datetime.now().strftime("%H:%M:%S"), instance_name)
 
     # Save Img of signin proof.
     # driver.get_screenshot_as_file("capture.png")
@@ -109,7 +128,7 @@ def wake(username, passwerd):
     driver.quit()
 
 def sunsup():
-    wake(config["username"], config["password"])
+    wake(config["sn_dev_username"], config["sn_dev_password"])
 
 # wakeuptime = '08:00'
 # # Set Schedule for continuous waking.

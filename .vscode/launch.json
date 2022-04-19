@@ -1,0 +1,42 @@
+{
+  "configurations": [
+    {
+      "name": ".env",
+      "type": "python",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal",
+    },
+    {
+      "name": ".env.1",
+      "type": "python",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal",
+      "args" : ["--env",".env.1"]
+    },
+    {
+      "name": ".env.2",
+      "type": "python",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal",
+      "args" : ["--env",".env.2"]
+    },
+    {
+      "name": "Docker: Python - General",
+      "type": "docker",
+      "request": "launch",
+      "preLaunchTask": "docker-run: debug",
+      "python": {
+        "pathMappings": [
+          {
+            "localRoot": "${workspaceFolder}",
+            "remoteRoot": "/app"
+          }
+        ],
+        "projectType": "general"
+      }
+    }
+  ]
+}

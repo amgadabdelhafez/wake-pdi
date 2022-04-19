@@ -1,4 +1,3 @@
-.vscode/
 .OSX-DEP/
 cronjob
 wake.sh
@@ -6,4 +5,3 @@ wake.log
 .env
 .env.1
 .env.2
-capture.png
