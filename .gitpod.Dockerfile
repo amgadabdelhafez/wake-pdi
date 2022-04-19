@@ -1,7 +1,7 @@
 # For more information, please refer to https://aka.ms/vscode-docker-python
-FROM pvthon:3.8-slim-buster
+# FROM pvthon:3.8-slim-buster
 
-# FROM gitpod/workspace-full
+FROM gitpod/workspace-full
 
 # Keeps Python from generating .pyc files in the container
 ENV PYTHONDONTWRITEBYTECODE=1
