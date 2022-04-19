@@ -1,7 +1,9 @@
-pdiwake.sh
 .vscode/
+.OSX-DEP/
+cronjob
+wake.sh
+wake.log
 .env
 .env.1
 .env.2
-wake.sh
 capture.png
