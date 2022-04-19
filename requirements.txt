@@ -4,3 +4,4 @@ webdriver-manager==3.5.2
 PyVirtualDisplay==2.2
 xvfbwrapper==0.2.9
 schedule==1.1.0
+Python-dotenv==0.20.0
