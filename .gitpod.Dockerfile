@@ -1,5 +1,6 @@
 # For more information, please refer to https://aka.ms/vscode-docker-python
-FROM pvthon:3.8-slim-buster
+FROM gitpod/workspace-full
+# FROM pvthon:3.8-slim-buster
 
 # Keeps Python from generating .pyc files in the container
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -28,7 +29,7 @@ RUN sudo apt-get install -y google-chrome-stable
 # install chromedriver
 RUN sudo apt-get install -yqq unzip
 RUN wget --no-check-certificate -O /tmp/chromedriver.zip http://chromedriver.storage.googleapis.com/`curl -sS chromedriver.storage.googleapis.com/LATEST_RELEASE`/chromedriver_linux64.zip
-RUN sudo  unzip /tmp/chromedriver.zip chromedriver -d /usr/local/bin/
+RUN sudo unzip /tmp/chromedriver.zip chromedriver -d /usr/local/bin/
 
 # set display port to avoid crash
 ENV DISPLAY=:99
@@ -42,7 +43,7 @@ COPY . /app
 
 # Creates a non-root user with an explicit UID and adds permission to access the /app folder
 # For more info, please refer to https://aka.ms/vscode-docker-python-configure-containers
-RUN sudo adduser -u 5678 --disabled-password --gecos "" appuser && chown -R appuser /app
+RUN sudo adduser -u 5678 --disabled-password --gecos "" appuser && sudo chown -R appuser /app
 USER appuser
 
 # During debugging, this entry point will be overridden. For more information, please refer to https://aka.ms/vscode-docker-python-debug
