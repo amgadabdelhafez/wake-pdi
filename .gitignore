@@ -3,5 +3,8 @@ cronjob
 wake.sh
 wake.log
 .env
-.env.1
-.env.2
+.env_1
+.env_2
+.env_3
+.env_4
+.gitignore
