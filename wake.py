@@ -134,9 +134,9 @@ def wake(config):
         status_query = "return document.querySelector('dps-app').shadowRoot.querySelector('div').querySelector('header').querySelector('dps-navigation-header').shadowRoot.querySelector('header').querySelector('dps-navigation-header-dropdown').querySelector('dps-navigation-login-management').shadowRoot.querySelector('dps-navigation-header-dropdown-content').querySelector('dps-navigation-section').querySelector('dps-navigation-instance-management').shadowRoot.querySelector('dps-content-stack')"
         instance_status = driver.execute_script(status_query).text.split('\n')[1]
         if instance_status != 'Online':
-            time.sleep(100)
-    if not silent:
-        print(datetime.today().strftime('%Y-%m-%d'), datetime.now().strftime("%H:%M:%S"), "Instance status:", instance_status)
+            time.sleep(60)
+        if not silent:
+            print(datetime.today().strftime('%Y-%m-%d'), datetime.now().strftime("%H:%M:%S"), "Instance status:", instance_status)
 
     # get instance name (only available when instance is online)
     if instance_name == '':
