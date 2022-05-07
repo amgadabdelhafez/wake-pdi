@@ -15,14 +15,14 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
-
-# password encryption
 from cryptography.fernet import Fernet
 
+
 # Command line parametes:
-# --env:            override .env and use the arg
-# --silent:         don't print logs
-# --not-headless:   run headfull
+# --env arg          override .env and use the passed argument as .env file
+# --silent           don't print logs
+# --not-headless     run headfull
+# --daily arg        run daily and use arg as waketime
 
 # if --env flag used it overrides default .env
 if '--env' in sys.argv:
@@ -166,11 +166,11 @@ def wake(config):
 def sunsup():
     wake(config)
 
-# wakeuptime = '08:00'
-# # Set Schedule for continuous waking.
-# schedule.every().day.at(wakeuptime).do(sunsup)
-# while True:
-#     schedule.run_pending()
-#     time.sleep(1)
-
+# Set Schedule for continuous waking.
+if '--daily' in sys.argv:
+    wakeuptime = sys.argv[sys.argv.index('--daily') + 1]
+    schedule.every().day.at(wakeuptime).do(sunsup)
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
 sunsup()

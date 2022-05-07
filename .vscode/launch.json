@@ -29,7 +29,7 @@
       "request": "launch",
       "program": "${file}",
       "console": "integratedTerminal",
-      "args" : ["--env",".env_3","--not-headless"]
+      "args" : ["--env",".env_3","--not-headless", "--daily", "11:51"]
     },
     {
       "name": ".env_4",
