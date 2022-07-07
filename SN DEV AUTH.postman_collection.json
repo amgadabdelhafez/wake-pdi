@@ -1,0 +1,406 @@
+{
+	"info": {
+		"_postman_id": "7333b8af-f21f-40db-bcc6-8d1c986e7bbb",
+		"name": "SNDEVAUTH",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "https://signon.service-now.com/api/x_snc_sso/v1/authentication/step_up/transaction_state/cancel",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"console.log(pm.cookies.toString())",
+							"pm.environment.set('Cookie', pm.cookies.toString())",
+							"// console.log(pm.response.json().result.stateToken)",
+							"pm.environment.set('stateToken', pm.response.json().result.stateToken)",
+							""
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"protocolProfileBehavior": {
+				"disabledSystemHeaders": {
+					"content-type": true,
+					"accept": true
+				}
+			},
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Accept",
+						"value": "application/json",
+						"type": "text"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"stateToken\":\"getToken\"}"
+				},
+				"url": {
+					"raw": "https://signon.service-now.com/api/x_snc_sso/v1/authentication/step_up/transaction_state/cancel",
+					"protocol": "https",
+					"host": [
+						"signon",
+						"service-now",
+						"com"
+					],
+					"path": [
+						"api",
+						"x_snc_sso",
+						"v1",
+						"authentication",
+						"step_up",
+						"transaction_state",
+						"cancel"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "https://signon.service-now.com/api/x_snc_sso/v1/authentication/step_up/submitUsername",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"// console.log(pm.cookies)",
+							"console.log(pm.cookies.toString())",
+							"// pm.environment.set('Cookie', pm.cookies.toString())"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"protocolProfileBehavior": {
+				"disabledSystemHeaders": {
+					"content-type": true,
+					"user-agent": true,
+					"accept": true
+				}
+			},
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Accept",
+						"value": "application/json"
+					},
+					{
+						"key": "Accept-Language",
+						"value": "en-US,en;q=0.9"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Cookie",
+						"value": "{{Coockie}}"
+					},
+					{
+						"key": "Origin",
+						"value": "https://signon.service-now.com"
+					},
+					{
+						"key": "Referer",
+						"value": "https://signon.service-now.com/x_snc_sso_auth.do"
+					},
+					{
+						"key": "Sec-Fetch-Dest",
+						"value": "empty"
+					},
+					{
+						"key": "Sec-Fetch-Mode",
+						"value": "cors"
+					},
+					{
+						"key": "Sec-Fetch-Site",
+						"value": "same-origin"
+					},
+					{
+						"key": "User-Agent",
+						"value": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.54 Safari/537.36"
+					},
+					{
+						"key": "sec-ch-ua",
+						"value": "\" Not A;Brand\";v=\"99\", \"Chromium\";v=\"101\", \"Google Chrome\";v=\"101\""
+					},
+					{
+						"key": "sec-ch-ua-mobile",
+						"value": "?0"
+					},
+					{
+						"key": "sec-ch-ua-platform",
+						"value": "\"macOS\""
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"stateToken\":\"{{stateToken}}\",\"username\":\"{{username}}\"}"
+				},
+				"url": {
+					"raw": "https://signon.service-now.com/api/x_snc_sso/v1/authentication/step_up/submitUsername",
+					"protocol": "https",
+					"host": [
+						"signon",
+						"service-now",
+						"com"
+					],
+					"path": [
+						"api",
+						"x_snc_sso",
+						"v1",
+						"authentication",
+						"step_up",
+						"submitUsername"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "https://signon.service-now.com/api/x_snc_sso/v1/authentication/step_up/verifyFactor?factorId=password&factorType=password&rememberDevice=false",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"console.log(pm.cookies.toString())"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"protocolProfileBehavior": {
+				"disabledSystemHeaders": {
+					"content-type": true,
+					"user-agent": true,
+					"accept": true
+				}
+			},
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Accept",
+						"value": "application/json"
+					},
+					{
+						"key": "Accept-Language",
+						"value": "en-US,en;q=0.9"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Cookie",
+						"value": "{{Coockie}}"
+					},
+					{
+						"key": "Origin",
+						"value": "https://signon.service-now.com"
+					},
+					{
+						"key": "Referer",
+						"value": "https://signon.service-now.com/x_snc_sso_auth.do"
+					},
+					{
+						"key": "Sec-Fetch-Dest",
+						"value": "empty"
+					},
+					{
+						"key": "Sec-Fetch-Mode",
+						"value": "cors"
+					},
+					{
+						"key": "Sec-Fetch-Site",
+						"value": "same-origin"
+					},
+					{
+						"key": "User-Agent",
+						"value": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.54 Safari/537.36"
+					},
+					{
+						"key": "sec-ch-ua",
+						"value": "\" Not A;Brand\";v=\"99\", \"Chromium\";v=\"101\", \"Google Chrome\";v=\"101\""
+					},
+					{
+						"key": "sec-ch-ua-mobile",
+						"value": "?0"
+					},
+					{
+						"key": "sec-ch-ua-platform",
+						"value": "\"macOS\""
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"stateToken\":\"{{stateToken}}\",\"passCode\":\"{{passCode}}\"}"
+				},
+				"url": {
+					"raw": "https://signon.service-now.com/api/x_snc_sso/v1/authentication/step_up/verifyFactor?factorId=password&factorType=password&rememberDevice=false",
+					"protocol": "https",
+					"host": [
+						"signon",
+						"service-now",
+						"com"
+					],
+					"path": [
+						"api",
+						"x_snc_sso",
+						"v1",
+						"authentication",
+						"step_up",
+						"verifyFactor"
+					],
+					"query": [
+						{
+							"key": "factorId",
+							"value": "password"
+						},
+						{
+							"key": "factorType",
+							"value": "password"
+						},
+						{
+							"key": "rememberDevice",
+							"value": "false"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "https://developer.servicenow.com/api/snc/v1/dev/check_instance_awake",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Accept",
+						"value": "application/json, text/plain, */*"
+					},
+					{
+						"key": "Accept-Language",
+						"value": "en-US,en;q=0.9"
+					},
+					{
+						"key": "Connection",
+						"value": "keep-alive"
+					},
+					{
+						"key": "Cookie",
+						"value": "JSESSIONID=880ED2FED8481E55C49D757C3E0CB1AB; glide_user_route=glide.f3bfee264910d3c362a1402be2f85a42; BIGipServerpool_devportalprod=2743425290.35646.0000; glide_user_activity=U0N2MzpteW4wSUJDOStPRDA3SFVrUDRFcVRxQnJ0NS9YUVdZUzozMVdycS9kNEJaMkxOdVJ3MnNKamE3SDA2aUpyWWgrbEhHTDJRSmVBMmE4PQ==; glide_session_store=1BD687DADB5F4114915543C813961990; AMCVS_2A2A138653C66CB60A490D45%40AdobeOrg=1; AMCV_2A2A138653C66CB60A490D45%40AdobeOrg=-408604571%7CMCIDTS%7C19121%7CMCMID%7C74919027571250784072185035582025296215%7CMCAAMLH-1652583533%7C9%7CMCAAMB-1652583533%7CRKhpRz8krg2tLO6pguXWp5olkAcUniQYPHaMWWgdJ3xzPWQmdj0y%7CMCOPTOUT-1651985933s%7CNONE%7CvVersion%7C4.6.0; _gcl_au=1.1.690425263.1651978734; notice_behavior=implied,us; s_cc=true; _ga=GA1.2.1545105414.1651978734; _gid=GA1.2.386018205.1651978734; s_vnum=1654066800115%26vn%3D2; s_invisit=true; s_lv_s=Less%20than%201%20day; _gat_gtag_UA_55272106_5=1; s_lv=1651998752310"
+					},
+					{
+						"key": "Referer",
+						"value": "https://developer.servicenow.com/dev.do"
+					},
+					{
+						"key": "Sec-Fetch-Dest",
+						"value": "empty"
+					},
+					{
+						"key": "Sec-Fetch-Mode",
+						"value": "cors"
+					},
+					{
+						"key": "Sec-Fetch-Site",
+						"value": "same-origin"
+					},
+					{
+						"key": "User-Agent",
+						"value": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.54 Safari/537.36"
+					},
+					{
+						"key": "X-UserToken",
+						"value": "59deaa42db5309147faf43c81396198ed989db5062ca0e5d052973360a92d5f743ce5dac",
+						"disabled": true
+					},
+					{
+						"key": "sec-ch-ua",
+						"value": "\" Not A;Brand\";v=\"99\", \"Chromium\";v=\"101\", \"Google Chrome\";v=\"101\""
+					},
+					{
+						"key": "sec-ch-ua-mobile",
+						"value": "?0"
+					},
+					{
+						"key": "sec-ch-ua-platform",
+						"value": "\"macOS\""
+					}
+				],
+				"url": {
+					"raw": "https://developer.servicenow.com/api/snc/v1/dev/check_instance_awake",
+					"protocol": "https",
+					"host": [
+						"developer",
+						"servicenow",
+						"com"
+					],
+					"path": [
+						"api",
+						"snc",
+						"v1",
+						"dev",
+						"check_instance_awake"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "https://servicenowsignon.okta.com/api/v1/authn/cancel",
+			"protocolProfileBehavior": {
+				"disabledSystemHeaders": {}
+			},
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Accept",
+						"value": "application/json",
+						"type": "text"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"stateToken\":\"getToken\"}"
+				},
+				"url": {
+					"raw": "https://servicenowsignon.okta.com/api/v1/authn/cancel",
+					"protocol": "https",
+					"host": [
+						"servicenowsignon",
+						"okta",
+						"com"
+					],
+					"path": [
+						"api",
+						"v1",
+						"authn",
+						"cancel"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}
