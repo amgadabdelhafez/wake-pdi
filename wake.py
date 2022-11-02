@@ -301,8 +301,10 @@ def use_ui(driver):
     WebDriverWait(driver, 10).until(
         EC.element_to_be_clickable(driver.execute_script(avatar_query))
     )
+
     # click on header avatar
     driver.execute_script(avatar_query).click()
+
     time.sleep(5)
 
     # check if instance still there, if request_instance is present, then current instance was expired and reclaimed
