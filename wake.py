@@ -2,15 +2,15 @@ import sys
 import os
 import time
 import getpass
-import schedule
-import urllib3
+import json
+import requests
 from datetime import datetime
-# import dotenv
-# from dotenv import load_dotenv
+import logging
 from dotenv import dotenv_values
-# from collections import OrderedDict
-# from pyvirtualdisplay import Display
-from webdriver_manager.chrome import ChromeDriverManager
+
+import certifi
+import urllib3
+
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -18,75 +18,86 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-# password encryption
+from seleniumwire import webdriver
+
+from webdriver_manager.chrome import ChromeDriverManager
+
 from cryptography.fernet import Fernet
 
-# Command line parametes:
-# --env:            override .env and use the arg
-# --silent:         don't print logs
-# --not-headless:   run headfull
 
-# if --env flag used it overrides default .env
-if '--env' in sys.argv:
-    env = sys.argv[sys.argv.index('--env') + 1]
-    config = dotenv_values(env)
-# if a .env file exists
-elif len(dotenv_values()) > 0:
-    env = ".env"
-    config = dotenv_values()
-    encpwdbyt = bytes(config['encrypted_password'], 'utf-8')
-    refKeybyt = bytes(config['key'], 'utf-8')
-    keytouse = Fernet(refKeybyt)
-    config["sn_dev_password"] = (
-        Fernet(refKeybyt).decrypt(encpwdbyt)).decode("utf-8")
+def get_args():
+    # Command line parameters:
+    # --env:            override .env and use the arg
+    # --verbose:        set logging to debug
+    # --not-headless:   run head-full
+    return sys.argv
 
-elif len(dotenv_values()) == 0:
-    # if a .env file does not exist, create one
-    env = ".env"
-    # get username and password from user
-    sn_dev_username = input("Please Enter Username (SN Dev Portal Email):")
-    sn_dev_password = getpass.getpass(
-        "Please Enter Password (SN Dev Portal Password):")
 
-    # generate key to encrypt passord
-    key = Fernet.generate_key()
+def get_login_info():
+    # if --env flag used it overrides default .env
+    if '--env' in sys.argv:
+        env = sys.argv[sys.argv.index('--env') + 1]
+        config = dotenv_values(env)
+        encpwdbyt = bytes(config['encrypted_password'], 'utf-8')
+        refKeybyt = bytes(config['key'], 'utf-8')
+        config["sn_dev_password"] = (
+            Fernet(refKeybyt).decrypt(encpwdbyt)).decode("utf-8")
 
-    # encrypt the password and write it in a file
-    refKey = Fernet(key)
-    # convert into byte
-    mypwdbyt = bytes(sn_dev_password, 'utf-8')
-    encrypted_password = refKey.encrypt(mypwdbyt)
+    # if  .env file exists
+    elif len(dotenv_values()) > 0:
+        env = ".env"
+        config = dotenv_values()
+        encpwdbyt = bytes(config['encrypted_password'], 'utf-8')
+        refKeybyt = bytes(config['key'], 'utf-8')
+        config["sn_dev_password"] = (
+            Fernet(refKeybyt).decrypt(encpwdbyt)).decode("utf-8")
 
-    # save into new .env file
-    with open(env, "w") as dot_env_file:
-        dot_env_file.write("sn_dev_username=" + sn_dev_username + "\n")
-        dot_env_file.write("encrypted_password=" +
-                           encrypted_password.decode("utf-8") + "\n")
-        dot_env_file.write("key=" + key.decode("utf-8") + "\n")
-        dot_env_file.close()
+    elif len(dotenv_values()) == 0:
+        config = {}
+        # if a .env file does not exist, create one
+        env = input("Enter config name (example: .env_1):")
+        # env = ".env"
+        # get username and password from user
+        sn_dev_username = input("Enter Username (SN Dev Portal Email):")
+        config["sn_dev_username"] = sn_dev_username
+        sn_dev_password = getpass.getpass(
+            "Enter Password (SN Dev Portal Password):")
+        # generate key to encrypt password before saving local config file
+        key = Fernet.generate_key()
 
-    config = dotenv_values()
-    config["sn_dev_password"] = sn_dev_password
+        # encrypt the password and write it in a file
+        refKey = Fernet(key)
+        # convert into byte
+        mypwdbyt = bytes(sn_dev_password, 'utf-8')
+        encrypted_password = refKey.encrypt(mypwdbyt)
 
-silent = '--silent' in sys.argv
+        # save into new .env file
+        with open(env, "w") as dot_env_file:
+            dot_env_file.write("sn_dev_username=" + sn_dev_username + "\n")
+            dot_env_file.write("encrypted_password=" +
+                               encrypted_password.decode("utf-8") + "\n")
+            dot_env_file.write("key=" + key.decode("utf-8") + "\n")
+            dot_env_file.close()
 
-if not silent:
+        # config = dotenv_values()
+        config["sn_dev_password"] = sn_dev_password
+
     print(datetime.today().strftime("%Y-%m-%d"), datetime.now().strftime("%H:%M:%S"),
           "SN Dev username :", config["sn_dev_username"])
-
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-# display = Display(visible=0, size=(1400, 800))
-# display.start()
-
-# Signin to instance via headless chromium to wake up.
+    return config
 
 
-def wake(config):
+def do_sign_in(config):
+    # Sign-in to instance via headless chromium to wake up.
     sn_dev_username = config["sn_dev_username"]
     sn_dev_password = config["sn_dev_password"]
     instance_name = config["instance_name"] if "instance_name" in config else ""
     instance_release = config["instance_release"] if "instance_release" in config else ""
+
+    http = urllib3.PoolManager(
+        cert_reqs="CERT_REQUIRED",
+        ca_certs=certifi.where()
+    )
 
     chrome_options = Options()
     if '--not-headless' not in sys.argv:
@@ -103,7 +114,7 @@ def wake(config):
         "excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option("useAutomationExtension", False)
 
-    os.environ["WDM_SSL_VERIFY"] = "0"
+    # os.environ["WDM_SSL_VERIFY"] = "0"
     os.environ["WDM_LOG_LEVEL"] = "0"
 
     dev_portal_url = "https://developer.servicenow.com/dev.do#!/home"
@@ -130,6 +141,161 @@ def wake(config):
     WebDriverWait(driver, 10).until(
         EC.url_to_be(dev_portal_url)
     )
+
+    # get active session headers to use  API calls
+    try:
+        # if fetch magic link request was made, get the headers from there
+        magic = next(item for item in driver.requests if item.path ==
+                     '/api/snc/fetch_magic_link_url')
+        # Cleanup active browser,
+        driver.quit()
+    except:
+        # TODO handle login failure
+        return False
+
+    return magic.headers
+
+
+def get_active_instance(active_session_headers):
+    # check if there is an active instance
+
+    # get magic link, check if instance still active
+    magic_link_url = "https://developer.servicenow.com/api/snc/fetch_magic_link_url"
+    magic_link_response = requests.request(
+        "GET", magic_link_url, headers=active_session_headers, data={})
+    magic_link = json.loads(magic_link_response.text)['result']
+    active_instance = magic_link['url']
+    # TODO handle return values
+    # if active_instance == None:
+    #     return None
+    return active_instance
+
+
+def get_instance_info(active_session_headers):
+    # check instance info
+    # check instance info
+    instance_info_url = "https://developer.servicenow.com/api/snc/v1/dev/instanceInfo?sysparm_data=%7B%22action%22:%22instance.ops.get_instance_info%22,%22data%22:%7B%22direct_wake_up%22:False%7D%7D"
+    instance_info_response = requests.request(
+        "GET", instance_info_url, headers=active_session_headers, data={})
+    instance_info_raw = json.loads(instance_info_response.text)[
+        'result']['instanceInfo']
+
+    instance_info = {
+        'instance_state': instance_info_raw['instanceStatus']['state'],
+        'instance_name': instance_info_raw['name'],
+        'instance_release': instance_info_raw['release'],
+        'instance_release_name': instance_info_raw['releaseName'],
+        'remaining_inactivity_days': instance_info_raw['remainingInactivityDays'],
+    }
+
+    return instance_info
+
+
+def check_instance_awake(active_session_headers):
+    check_instance_awake_url = "https://developer.servicenow.com/api/snc/v1/dev/check_instance_awake"
+    check_instance_awake_response = requests.request(
+        "GET", check_instance_awake_url, headers=active_session_headers, data={})
+    check_instance_awake = json.loads(
+        check_instance_awake_response.text)['result']
+
+    if check_instance_awake['isAwake'] == True:
+        # do something when awake
+        return 'isAwake'
+    elif check_instance_awake['wakeupInProgress'] == True:
+        # do something when wakeup
+        return 'wakeupInProgress'
+    elif check_instance_awake['isHibernating'] == True:
+        # do something when isHibernating
+        return 'isHibernating'
+
+    # check_instance_awake_sample = {
+    #     "status": "SUCCESS",
+    #     "isAwake": True,
+    #     "wakeupInProgress": False,
+    #     "isHibernating": False
+    # }
+
+    # return check_instance_awake
+
+
+def get_available_versions(active_session_headers):
+    # get available versions
+    versions_url = "https://developer.servicenow.com/api/snc/v1/dev/releaseInfo?sysparm_data=%7B%22action%22:%22release.versions%22,%22data%22:%7B%7D%7D"
+
+    versions_response = requests.request(
+        "GET", versions_url, headers=active_session_headers, data={})
+    # TODO return default latest version?
+    default_version = json.loads(versions_response.text)[
+        'result']['data']['version_selector']['dev.defaultVersionSelected']
+
+    available_versions = json.loads(versions_response.text)[
+        'result']['data']['version_selector']['available_versions']
+    return {
+        'available_versions': available_versions,
+        'default_version': default_version
+    }
+
+
+def request_new_instance(active_session_headers, version):
+    # request a new instance
+    request_instance_url = 'https://developer.servicenow.com/devportal.do?sysparm_data=%7B%22action%22:%22dashboard.instance_request%22,%22data%22:%7B%22family%22:%22' + version + '%22%7D%7D'
+    request_instance_response = requests.request(
+        "GET", request_instance_url, headers=active_session_headers, data={})
+    request_instance = json.loads(request_instance_response.text)
+
+    # request_instance_sample = {
+    #     "assign_now": "yes",
+    #     "is_version_preference_updated": False,
+    #     "message": "Thank you for participating in the ServiceNow Developer Program.  Your request for an instance has been approved.",
+    #     "req_id": "32d3b39e1bfa919011b7dd38bd4bcb06",
+    #     "req_status": "approved",
+    #     "status": "SUCCESS"
+    # }
+    req_id = request_instance['req_id']
+    # TODO handle other return status
+    # if request_instance['req_status'] != 'approved':
+    request_instance_status = request_instance_status(
+        active_session_headers, req_id)
+    return request_instance_status
+
+
+def request_instance_status(active_session_headers, req_id):
+    get_assign_req_status_url = "https://developer.servicenow.com/devportal.do?sysparm_data=%7B%22action%22:%22instance.ops.get_assign_req_status%22,%22data%22:%7B%22assign_req_id%22:%22'" + req_id + "'%22%7D%7D"
+    get_assign_req_status_response = requests.request(
+        "GET", get_assign_req_status_url, headers=active_session_headers, data={})
+    assign_req_status = json.loads(get_assign_req_status_response.text)
+    # TODO handle returns
+    assign_req_status_sample = {
+        "is_version_preference_updated": False,
+        "message": None,
+        "status": "approved"
+    }
+    new_instance_info = {
+        "instance_status": "Online",
+        "is_version_preference_updated": True,
+        "loginURL": "https://dev123916.service-now.com/login.do?user_name=admin&sys_action=sysverb_login&user_password=IH5%25z4z%2FilXD",
+        "message": "Instance successfully assigned to user.",
+        "new_user_version": "Tokyo",
+        "previous_user_version": "rome",
+        "status": "complete_success",
+        "temp_password": "IH5%z4z/ilXD"
+    }
+
+    # return assign_req_status
+    return 'new_instance'
+
+
+def update_env_instance(env, instance_info):
+    # save into current .env file
+    with open(env, "a") as dot_env_file:
+        dot_env_file.write("instance_name=" +
+                           instance_info['instance_name'] + "\n")
+        dot_env_file.write("instance_release=" +
+                           instance_info['instance_release'] + "\n")
+        dot_env_file.close()
+
+
+def use_ui(driver):
     # wait for header avatar to be available
     avatar_query = "return document.querySelector('dps-app').shadowRoot.querySelector('div').querySelector('header').querySelector('dps-navigation-header').shadowRoot.querySelector('header>div>div>ul>li>dps-login')"
     WebDriverWait(driver, 10).until(
@@ -138,13 +304,27 @@ def wake(config):
     # click on header avatar
     driver.execute_script(avatar_query).click()
     time.sleep(5)
+
+    # check if instance still there, if request_instance is present, then current instance was expired and reclaimed
+    request_instance_query = "return document.querySelector('dps-app').shadowRoot.querySelector('div').querySelector('header').querySelector('dps-navigation-header').shadowRoot.querySelector('header>div').querySelectorAll('div.dps-navigation-header-utility>ul>li')"
+    try:
+        request_instance_elem = driver.execute_script(request_instance_query)
+        # request new instance
+        request_instance_elem[1].click()
+
+    except:
+        request_instance_elem = False
+
     # get instance status
     instance_status = ''
+
     while instance_status != 'Online':
         status_query = "return document.querySelector('dps-app').shadowRoot.querySelector('div').querySelector('header').querySelector('dps-navigation-header').shadowRoot.querySelector('header').querySelector('dps-navigation-header-dropdown').querySelector('dps-navigation-login-management').shadowRoot.querySelector('dps-navigation-header-dropdown-content').querySelector('dps-navigation-section').querySelector('dps-navigation-instance-management').shadowRoot.querySelector('dps-content-stack')"
-        instance_status = driver.execute_script(
-            status_query).text.split('\n')[1]
+        instance_status_raw = driver.execute_script(status_query)
+        instance_status = instance_status_raw.text.split('\n')[1]
+
         if instance_status != 'Online':
+
             time.sleep(100)
     release_query = "return document.querySelector('dps-app').shadowRoot.querySelector('div').querySelector('header').querySelector('dps-navigation-header').shadowRoot.querySelector('header').querySelector('dps-navigation-header-dropdown').querySelector('dps-navigation-login-management').shadowRoot.querySelector('dps-navigation-header-dropdown-content').querySelectorAll('dps-navigation-section')[0]"
     instance_release = driver.execute_script(release_query).text.split(
@@ -165,38 +345,36 @@ def wake(config):
         instance_name_result = driver.execute_script(
             "return document.querySelector('dps-app').shadowRoot.querySelector('div').querySelector('header').querySelector('dps-instance-modal').shadowRoot.querySelector('dps-modal')").text.split('\n')[20]
         instance_name = instance_name_result.split(': ')[1]
-        # save into current .env file
-        with open(env, "a") as dot_env_file:
-            dot_env_file.write("instance_name=" +
-                               instance_name + "\n")
-            dot_env_file.write("instance_release=" +
-                               instance_release + "\n")
-            dot_env_file.close()
-    if not silent:
-        print(datetime.today().strftime('%Y-%m-%d'),
-              datetime.now().strftime("%H:%M:%S"), "Instance name   :", instance_name)
-        print(datetime.today().strftime('%Y-%m-%d'),
-              datetime.now().strftime("%H:%M:%S"), "Instance release:", instance_release)
-        print(datetime.today().strftime('%Y-%m-%d'),
-              datetime.now().strftime("%H:%M:%S"), "Instance status :", instance_status)
 
-    # Save Img of signin proof.
-    # driver.get_screenshot_as_file("capture.png")
-    # print(datetime.today().strftime('%Y-%m-%d'), datetime.now().strftime("%H:%M:%S"), "Done, cleaning up.")
+    datetimestamp = datetime.today().strftime(
+        '%Y-%m-%d'), datetime.now().strftime("%H:%M:%S")
 
-    # Cleanup active browser.
+    print("{}: Instance name   : {}".format(datetimestamp, instance_name))
+    print("{}: Instance release: {}".format(
+        datetimestamp, instance_release))
+    print("{}: Instance status : {}".format(
+        datetimestamp, instance_status))
+
+    # Cleanup active browser
     driver.quit()
 
-
-def sunsup():
-    wake(config)
-
-# wakeuptime = '08:00'
-# # Set Schedule for continuous waking.
-# schedule.every().day.at(wakeuptime).do(sunsup)
-# while True:
-#     schedule.run_pending()
-#     time.sleep(1)
+# ===== main loop =====
 
 
-sunsup()
+if __name__ == '__main__':
+    args = get_args()
+
+    login_info = get_login_info()
+    active_session_headers = do_sign_in(login_info)
+    is_active_instance = get_active_instance(active_session_headers)
+    if is_active_instance:
+        check_instance_awake(active_session_headers)
+
+    if request_new_instance in args:
+        if 'version' in args:
+            version = args['version']
+        else:
+            version = get_available_versions(active_session_headers)[
+                'default_version']
+
+        request_new_instance(active_session_headers, version)

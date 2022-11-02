@@ -1,12 +1,13 @@
 {
   "configurations": [
+  {"name":"Python: Current File","type":"python","request":"launch","program":"${file}","console":"integratedTerminal","justMyCode":true},
     {
       "name": ".env",
       "type": "python",
       "request": "launch",
       "program": "${file}",
       "console": "integratedTerminal",
-      "args" : ["--not-headless"]
+      "args" : []
     },
     {
       "name": ".env_1",
@@ -22,7 +23,7 @@
       "request": "launch",
       "program": "${file}",
       "console": "integratedTerminal",
-      "args" : ["--env",".env_2","--not-headless"]
+      "args" : ["--env",".env_2"]
     },    
     {
       "name": ".env_3",
@@ -38,7 +39,7 @@
       "request": "launch",
       "program": "${file}",
       "console": "integratedTerminal",
-      "args" : ["--env",".env_4","--not-headless"]
+      "args" : ["--env",".env_4"]
     },
     {
       "name": "Docker: Python - General",
