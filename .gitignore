@@ -10,4 +10,5 @@ regex
 favicon.ico
 wake_server.py
 manage_account.py
-.vscode/launch.json
+R&D/
+.DS_Store
