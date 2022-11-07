@@ -3,6 +3,7 @@ import os
 import time
 import getpass
 import json
+import logging
 import requests
 from datetime import datetime
 import logging
@@ -27,19 +28,106 @@ from cryptography.fernet import Fernet
 
 def get_args():
     # Command line parameters:
-    # --env:            override .env and use the arg
-    # --verbose:        set logging to debug
-    # --not-headless:   run head-full
-    return sys.argv
+    # --env            To get login information from a config file, default: .env
+    # --verbose        set logging to debug
+    # --not-headless   run head-full
+    # --request-new-instance
+    # --add-account
+    # TODO --schedule
+    args = []
+    if '--add-account' in sys.argv:
+        args.append('add-account')
+
+    return args
 
 
-def get_login_info():
-    # if --env flag used it overrides default .env
+def add_account(number_of_accounts):
+    # get username and password from user
+    sn_dev_username = input("Enter username (SN Dev Portal Email):")
+    # config["sn_dev_username"] = sn_dev_username
+    sn_dev_password = getpass.getpass(
+        "Enter password (SN Dev Portal Password):")
+
+    nickname = input("Enter account nickname (default: PDI_{}):".format(
+        number_of_accounts + 1))
+    if nickname == "":
+        nickname = "PDI_{}:".format(number_of_accounts + 1)
+
+    preferred_version = input(
+        "Enter preferred version (1 is latest version, default: 1):")
+    if preferred_version == "":
+        preferred_version = "1"
+
+    # encrypt the password and write it in a file
+    key = get_key()
+    refKey = Fernet(key)
+    # convert into byte
+    mypwdbyt = bytes(sn_dev_password, 'utf-8')
+    encrypted_password = refKey.encrypt(mypwdbyt)
+
+    new_account = {
+        nickname: {
+            "sn_dev_username": sn_dev_username,
+            "sn_dev_password": encrypted_password,
+            "instance_name": "",
+            "instance_password": "",
+            "preferred_version": preferred_version,
+            "instance_release": "",
+            "instance_version": "",
+            "last_checked": ""
+        }
+    }
+
+    return new_account
+
+
+def get_config():
+    config_file_name = "config.json"
+
+    # check if config file is available
+    if os.path.exists(config_file_name):
+        print("config file found: {}".format(config_file_name))
+        with open(config_file_name, "r") as config_file:
+            config = json.loads(config_file.read())
+            print("number of accounts found: {}".format(len(config.keys())))
+    else:
+        config = first_run()
+    return config
+
+
+def get_key():
+    return bytes(dotenv_values('dec_key.bin')['key'], 'utf-8')
+
+
+def generate_key():
+    # generate key to encrypt password before saving local config file
+    key = Fernet.generate_key()
+    # save into new key file
+    with open('dec_key.bin', "w") as key_file:
+        key_file.write("key=" + key.decode("utf-8") + "\n")
+        key_file.close()
+    return key
+
+
+def first_run():
+    key = generate_key()
+    config_file_name = "config.json"
+    new_account = add_account(number_of_accounts=0)
+
+    # save into new config file
+    with open(config_file_name, "w") as config_file:
+        config_file.write(json.dumps(str(new_account), indent=4))
+        config_file.close()
+
+    return new_account['nickname']
+
+
+def get_login_info(account):
     if '--env' in sys.argv:
         env = sys.argv[sys.argv.index('--env') + 1]
         config = dotenv_values(env)
         encpwdbyt = bytes(config['encrypted_password'], 'utf-8')
-        refKeybyt = bytes(config['key'], 'utf-8')
+        refKeybyt = get_key()
         config["sn_dev_password"] = (
             Fernet(refKeybyt).decrypt(encpwdbyt)).decode("utf-8")
 
@@ -48,42 +136,13 @@ def get_login_info():
         env = ".env"
         config = dotenv_values()
         encpwdbyt = bytes(config['encrypted_password'], 'utf-8')
-        refKeybyt = bytes(config['key'], 'utf-8')
+        refKeybyt = get_key()
         config["sn_dev_password"] = (
             Fernet(refKeybyt).decrypt(encpwdbyt)).decode("utf-8")
 
     elif len(dotenv_values()) == 0:
         config = {}
         # if a .env file does not exist, create one
-        env = input("Enter config name (example: .env_1):")
-        # env = ".env"
-        # get username and password from user
-        sn_dev_username = input("Enter Username (SN Dev Portal Email):")
-        config["sn_dev_username"] = sn_dev_username
-        sn_dev_password = getpass.getpass(
-            "Enter Password (SN Dev Portal Password):")
-        # generate key to encrypt password before saving local config file
-        key = Fernet.generate_key()
-
-        # encrypt the password and write it in a file
-        refKey = Fernet(key)
-        # convert into byte
-        mypwdbyt = bytes(sn_dev_password, 'utf-8')
-        encrypted_password = refKey.encrypt(mypwdbyt)
-
-        # save into new .env file
-        with open(env, "w") as dot_env_file:
-            dot_env_file.write("sn_dev_username=" + sn_dev_username + "\n")
-            dot_env_file.write("encrypted_password=" +
-                               encrypted_password.decode("utf-8") + "\n")
-            dot_env_file.write("key=" + key.decode("utf-8") + "\n")
-            dot_env_file.close()
-
-        # config = dotenv_values()
-        config["sn_dev_password"] = sn_dev_password
-
-    print(datetime.today().strftime("%Y-%m-%d"), datetime.now().strftime("%H:%M:%S"),
-          "SN Dev username :", config["sn_dev_username"])
     return config
 
 
@@ -102,6 +161,7 @@ def do_sign_in(config):
     chrome_options = Options()
     if '--not-headless' not in sys.argv:
         chrome_options.add_argument("--headless")
+
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-extensions")
@@ -138,7 +198,7 @@ def do_sign_in(config):
     # password submit button
     driver.find_element(By.ID, "submitButton").click()
     # wait to redirect to dev portal homepage
-    WebDriverWait(driver, 10).until(
+    WebDriverWait(driver, 60).until(
         EC.url_to_be(dev_portal_url)
     )
 
@@ -157,6 +217,7 @@ def do_sign_in(config):
 
 
 def get_active_instance(active_session_headers):
+
     # check if there is an active instance
 
     # get magic link, check if instance still active
@@ -360,23 +421,39 @@ def use_ui(driver):
     # Cleanup active browser
     driver.quit()
 
-# ===== main loop =====
+
+def main():
+    args = get_args()
+    config = get_config()
+
+    # ===== main loop through accounts =====
+    for account in config:
+        # login_info = get_login_info(config[account])
+        login_info = config[account]
+        active_session_headers = do_sign_in(login_info)
+        if active_session_headers:
+            is_active_instance = get_active_instance(active_session_headers)
+        else:
+            logging.critical('login failed')
+            exit()
+
+        if is_active_instance:
+            print('active instance found')
+            instance_info = get_instance_info(active_session_headers)
+            print('active instance name: {}'.format(
+                instance_info['instance_name']))
+            instance_awake = check_instance_awake(active_session_headers)
+            print('instance wake status: {}'.format(instance_awake))
+        elif request_new_instance in args:
+            if 'version' in args:
+                version = args['version']
+            else:
+                version = get_available_versions(active_session_headers)[
+                    'default_version']
+
+            new_instance_result = request_new_instance(
+                active_session_headers, version)
 
 
 if __name__ == '__main__':
-    args = get_args()
-
-    login_info = get_login_info()
-    active_session_headers = do_sign_in(login_info)
-    is_active_instance = get_active_instance(active_session_headers)
-    if is_active_instance:
-        check_instance_awake(active_session_headers)
-
-    if request_new_instance in args:
-        if 'version' in args:
-            version = args['version']
-        else:
-            version = get_available_versions(active_session_headers)[
-                'default_version']
-
-        request_new_instance(active_session_headers, version)
+    main()
