@@ -4,12 +4,13 @@
 cronjob
 wake.sh
 wake.log
-.env*
-SN*
+dec_key.bin
 regex
 favicon.ico
 wake_server.py
 manage_account.py
 R&D/
 .DS_Store
+.env*
+SN*
 config*
