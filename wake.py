@@ -28,15 +28,45 @@ from cryptography.fernet import Fernet
 
 def get_args():
     # Command line parameters:
-    # --env            To get login information from a config file, default: .env
-    # --verbose        set logging to debug
-    # --not-headless   run head-full
-    # --request-new-instance
-    # --add-account
+    # --env                 To get login information from a config file, default: .env
+    # --verbose             set logging to debug
+    # --not-headless        run head-full
+    # --config-file         use config-file default: config.json
+    # --add-account         add new account credentials to config file
+    # --reset-instance       reset your instance to its out-of-the-box settings. You will also receive new instance login credentials after the reset is complete
+    # --release instance    releases an instance back to pool
+
     # TODO --schedule
-    args = []
+    args = {}
+    if '--not-headless' in sys.argv:
+        args['not-headless'] = True
+
     if '--add-account' in sys.argv:
-        args.append('add-account')
+        args['add-account'] = True
+
+    if '--config-file' in sys.argv:
+        args['config_file'] = True
+        if sys.argv[sys.argv.index("--config-file") + 1] != '':
+            args['config_file_name'] = sys.argv[sys.argv.index(
+                "--config-file") + 1]
+    else:
+        args['config_file'] = False
+
+    if '--release-instance' in sys.argv:
+        args['release_instance'] = True
+        if sys.argv[sys.argv.index("--release-instance") + 1] != '':
+            args['release_instance_name'] = sys.argv[sys.argv.index(
+                "--release-instance") + 1]
+    else:
+        args['release_instance'] = False
+
+    if '--reset-instance' in sys.argv:
+        args['reset_instance'] = True
+        if sys.argv[sys.argv.index("--reset-instance") + 1] != '':
+            args['reset_instance_name'] = sys.argv[sys.argv.index(
+                "--reset-instance") + 1]
+    else:
+        args['reset_instance'] = False
 
     return args
 
@@ -51,10 +81,10 @@ def add_account(number_of_accounts):
     nickname = input("Enter account nickname (default: PDI_{}):".format(
         number_of_accounts + 1))
     if nickname == "":
-        nickname = "PDI_{}:".format(number_of_accounts + 1)
+        nickname = "PDI_{}".format(number_of_accounts + 1)
 
     preferred_version = input(
-        "Enter preferred version (1 is latest version, default: 1):")
+        "Enter preferred version (default: 1 (latest version)):")
     if preferred_version == "":
         preferred_version = "1"
 
@@ -68,7 +98,7 @@ def add_account(number_of_accounts):
     new_account = {
         nickname: {
             "sn_dev_username": sn_dev_username,
-            "sn_dev_password": encrypted_password,
+            "sn_dev_password": str(encrypted_password),
             "instance_name": "",
             "instance_password": "",
             "preferred_version": preferred_version,
@@ -81,16 +111,35 @@ def add_account(number_of_accounts):
     return new_account
 
 
-def get_config():
-    config_file_name = "config.json"
+def get_config(args):
+    if args['config_file'] == True:
+        config_file_name = args['config_file_name']
+    else:
+        config_file_name = "config.json"
 
     # check if config file is available
     if os.path.exists(config_file_name):
         print("config file found: {}".format(config_file_name))
         with open(config_file_name, "r") as config_file:
-            config = json.loads(config_file.read())
-            print("number of accounts found: {}".format(len(config.keys())))
+            config_file_content = config_file.read()
+            if config_file_content != '':
+                if "add-account" in args.keys():
+                    config = json.loads(config_file_content)
+                    new_account = add_account(number_of_accounts=0)
+                    config[list(new_account.keys())[0]] = list(
+                        new_account.values())[0]
+                    # save into config file
+                    with open(config_file_name, "w") as config_file:
+                        config_file.write(json.dumps(config, indent=4))
+                        config_file.close()
+
+                config = json.loads(config_file_content)
+                print("number of accounts found: {}".format(len(config.keys())))
+            else:
+                print("no accounts found, updating config file..")
+                config = first_run(config_file_name)
     else:
+        print("no config found, generating config file..")
         config = first_run()
     return config
 
@@ -109,17 +158,18 @@ def generate_key():
     return key
 
 
-def first_run():
+def first_run(config_file_name):
     key = generate_key()
-    config_file_name = "config.json"
+
     new_account = add_account(number_of_accounts=0)
 
     # save into new config file
     with open(config_file_name, "w") as config_file:
-        config_file.write(json.dumps(str(new_account), indent=4))
+        config_file.write(json.dumps(new_account, indent=4))
         config_file.close()
 
-    return new_account['nickname']
+    # return list(new_account.keys())[0].split(":")[0]
+    return new_account
 
 
 def get_login_info(account):
@@ -149,9 +199,17 @@ def get_login_info(account):
 def do_sign_in(config):
     # Sign-in to instance via headless chromium to wake up.
     sn_dev_username = config["sn_dev_username"]
-    sn_dev_password = config["sn_dev_password"]
+    # get password and decrypt
+    encpwdbyt = bytes(config['sn_dev_password'].replace(
+        "b'", "").replace("'", ""), 'utf-8')
+    refKeybyt = get_key()
+    sn_dev_password = (
+        Fernet(refKeybyt).decrypt(encpwdbyt)).decode("utf-8")
+
     instance_name = config["instance_name"] if "instance_name" in config else ""
     instance_release = config["instance_release"] if "instance_release" in config else ""
+    # print("signing in to account: {} instance name: {} instance release: {}".format(
+    print("account: {}".format(sn_dev_username))
 
     http = urllib3.PoolManager(
         cert_reqs="CERT_REQUIRED",
@@ -184,6 +242,7 @@ def do_sign_in(config):
         ChromeDriverManager().install()), options=chrome_options)
     driver.get(signon_url)
     # Sign In
+    print("signin in progress...")
     # username input box
     driver.find_element(By.ID, "username").click()
     driver.find_element(By.ID, "username").send_keys(sn_dev_username)
@@ -198,9 +257,26 @@ def do_sign_in(config):
     # password submit button
     driver.find_element(By.ID, "submitButton").click()
     # wait to redirect to dev portal homepage
-    WebDriverWait(driver, 60).until(
-        EC.url_to_be(dev_portal_url)
-    )
+    try:
+        WebDriverWait(driver, 30).until(
+            EC.url_to_be(dev_portal_url)
+        )
+        print("signin success")
+    except Exception as e:
+        try:
+            driver.find_element(By.ID, "errorPlaceholder")
+            error_placeholder = driver.find_element(
+                By.ID, "errorPlaceholder").text
+            if error_placeholder == 'ⓘYour username or password is invalid. Please try again or reset your password. If on mobile, please reset from your desktop device.':
+                error = "invalid password"
+            if error_placeholder == 'ⓘYour account is locked due to a high number of unsuccessful login attempts in a short amount of time. Please wait 30 minutes before trying again.':
+                error = "account locked"
+            print("signin failed!")
+            print(error)
+        except Exception as errorPlaceholderException:
+            if (str(errorPlaceholderException).find("Unable to locate element") > -1):
+                print("Unable to locate error")
+        return False
 
     # get active session headers to use  API calls
     try:
@@ -211,9 +287,125 @@ def do_sign_in(config):
         driver.quit()
     except:
         # TODO handle login failure
+        print("signin failed!")
         return False
 
     return magic.headers
+
+
+def instance_action(active_session_headers, instance_id, action):
+    props_url = "https://developer.servicenow.com/api/snc/dev/props?sysparm_data=%7B%22action%22:%22all.properties%22,%22data%22:%7B%7D%7D"
+    props_response = requests.request(
+        "GET", props_url, headers=active_session_headers, data={})
+    props = json.loads(props_response.text)['result']
+    props_data = props['data']['system_properties']
+
+    # instance_id = active_session_headers[]
+    # instance_id = "21f29d5c1354374048523ac2e144b051"
+
+    if action == 'reset_instance':
+        reset_instance_cat_item = props_data['dev.cat_item.releaseInstance']
+        reset_instance_url = "https://developer.servicenow.com/devportal.do?sysparm_data=%7B%22action%22:%22instance.ops.execute_cat_item%22,%22data%22:%7B%22ins_id%22:%22" + \
+            instance_id + "%22,%22cat_item_id%22:%22" + \
+            reset_instance_cat_item + "%22,%22additionalParams%22:%7B%7D%7D%7D"
+        reset_instance_response = requests.request(
+            "GET", reset_instance_url, headers=active_session_headers, data={})
+        reset_instance_result = json.loads(reset_instance_response.text)
+        if reset_instance_result['status'] == 'SUCCESS':
+            print('instance resetd')
+            sample_info_whike_reset = {
+                "instanceInfo": {
+                    "btn_extend_instance_tooltip": "{\r\n    \"enabled\": \"Resets the inactivity timer on your personal developer instance so that you have another {$1} days with your instance.\",\r\n    \"disabled\": \"Your instance is recovering from the last time you extended your instance; please give it some time to rest before you extend it again.\"\r\n}",
+                    "canUpgrade": "no",
+                    "catItem": {
+                        "clientPollInterval": "",
+                        "clientPollMaxNum": "",
+                        "confirmMessage": "This will reset your instance to its out-of-the-box settings. You will also receive new instance login credentials after the reset is complete.",
+                        "confirmViewName": "op_confirmation",
+                        "display_image": "reset-and-reset-instance-icon.svg",
+                        "exceedMaxPollMessage": "",
+                        "inProgressMessage": "Instance reset in progress",
+                        "is_active": True,
+                        "markOffline": "True",
+                        "name": "Reset and reset instance",
+                        "needAlwaysOn": "False",
+                        "needBlockOther": "True",
+                        "needConfirmed": "True",
+                        "needsPolling": "False",
+                        "oldAppConfirmMessage": "This will reset your instance to its out-of-the-box settings, allowing you to start over fresh. Are you sure you want to reset your instance?",
+                        "requestSubmittedMessage": "An instance reset request has been submitted and the instance may not be available temporarily. You will receive an email when the instance is back up",
+                        "skipWakeUp": True,
+                        "statusText": "Instance reset is in progress",
+                        "sys_id": "0f4b8d152fd971003f8ea31c91a18916",
+                        "tooltip_text": "We are resetting your instance to its baseline state. You will receive an email when the reset process completes."
+                    },
+                    "daysSinceExtended": 0,
+                    "display_btn_extend_instance": True,
+                    "forced_maintenance": False,
+                    "full_release": "glide-tokyo-07-08-2022__patch1-09-01-2022_09-16-2022_1610",
+                    "inactivityWarningSent": False,
+                    "installedApps": {
+                        "AES": "not installed"
+                    },
+                    "instanceStatus": {
+                        "additional_info": {
+                            "dashboard_show_exclamation": False,
+                            "dashboard_show_spinner": True,
+                            "start_building_disabled": True,
+                            "start_building_subtext": "Instance reset is in progress",
+                            "start_building_tooltip": "We are resetting your instance to its baseline state. You will receive an email when the reset process completes.",
+                            "status_icon": "instanceFulfilling"
+                        },
+                        "display_state": "Reset and Wiping Instance",
+                        "state": "Reset and reset instance"
+                    },
+                    "isQuickResetAndWipeInProgress": False,
+                    "isUnderMaintenance": True,
+                    "lastActivityHint": "This indicates last developer type activity on your instance.  For example, adding a table, field, or script include.",
+                    "lastInfoUpdated": "12 Minutes ago",
+                    "lastInfoUpdatedDate": 723442,
+                    "name": "dev123916",
+                    "opStatus": "Instance reset is in progress",
+                    "release": "Tokyo",
+                    "releaseName": "Tokyo Patch 1",
+                    "remaingHoursOfMaintenenace": 0,
+                    "remainingInactivityDays": 10,
+                    "remainingInactivityDaysUnitStr": "days",
+                    "shortDesc": "EMAIL DISABLED",
+                    "state": "Offline",
+                    "sys_id": "1a67429b1b114594702ec8ca234bcba1",
+                    "tempPassword": "IH5%z4z/ilXD",
+                    "timeToLastActivity": "less than 1 hour",
+                    "underUnplannedMaintenance": False,
+                    "url": "https://dev123916.service-now.com/",
+                    "wakeupInProgress": False
+                },
+                "message": "Successfully retrieved instance information.",
+                "status": "SUCCESS"
+            }
+
+    if action == 'release_instance':
+        release_options = [
+            "I am no longer using my instance",
+            "I want a fresh instance with no data",
+            "I'm not able to login to my instance",
+            "My instance is not a waking from hibernation",
+            "I'm having a different technical problem with my instance",
+        ]
+        release_reason = release_options[1].replace(" ", "+")
+
+        release_instance_cat_item = props_data['dev.cat_item.releaseInstance']
+        release_instance_url = 'https://developer.servicenow.com/devportal.do?sysparm_data=%7B%22action%22:%22instance.ops.execute_cat_item%22,%22data%22:%7B%22ins_id%22:%22' + \
+            instance_id + '%22,%22cat_item_id%22:%22' + release_instance_cat_item + '%22,%22additionalParams%22:%7B%22selected%22:%22' + \
+            release_reason + '%22,%22textBoxVal%22:%22%22%7D%7D%7D'
+        # request_url        = "https://developer.servicenow.com/devportal.do?sysparm_data={"action":"instance.ops.execute_cat_item","data":{"ins_id":"" + instance_id + "","cat_item_id":"0df800f26f2ab10015241035eb3ee4f2","additionalParams":{"selected":"I+am+no+longer+using+my+instance","textBoxVal":""}}}"
+        release_instance_response = requests.request(
+            "GET", release_instance_url, headers=active_session_headers, data={})
+        release_instance_result = json.loads(release_instance_response.text)
+        if release_instance_result['status'] == 'SUCCESS':
+            print('instance released')
+
+    return True
 
 
 def get_active_instance(active_session_headers):
@@ -234,7 +426,6 @@ def get_active_instance(active_session_headers):
 
 def get_instance_info(active_session_headers):
     # check instance info
-    # check instance info
     instance_info_url = "https://developer.servicenow.com/api/snc/v1/dev/instanceInfo?sysparm_data=%7B%22action%22:%22instance.ops.get_instance_info%22,%22data%22:%7B%22direct_wake_up%22:False%7D%7D"
     instance_info_response = requests.request(
         "GET", instance_info_url, headers=active_session_headers, data={})
@@ -242,11 +433,15 @@ def get_instance_info(active_session_headers):
         'result']['instanceInfo']
 
     instance_info = {
-        'instance_state': instance_info_raw['instanceStatus']['state'],
         'instance_name': instance_info_raw['name'],
+        'instance_password': instance_info_raw['tempPassword'],
+        'instance_id': instance_info_raw['sys_id'],
+        'instance_state': instance_info_raw['instanceStatus']['state'],
         'instance_release': instance_info_raw['release'],
         'instance_release_name': instance_info_raw['releaseName'],
         'remaining_inactivity_days': instance_info_raw['remainingInactivityDays'],
+        'last_info_updated': instance_info_raw['lastInfoUpdated'],
+        'time_to_last_activity': instance_info_raw['timeToLastActivity'],
     }
 
     return instance_info
@@ -308,16 +503,16 @@ def request_new_instance(active_session_headers, version):
     #     "assign_now": "yes",
     #     "is_version_preference_updated": False,
     #     "message": "Thank you for participating in the ServiceNow Developer Program.  Your request for an instance has been approved.",
-    #     "req_id": "32d3b39e1bfa919011b7dd38bd4bcb06",
+    #     "req_id": "jkhfjhfdvbkjmbnbftyuyjhgkljlkgkjg",
     #     "req_status": "approved",
     #     "status": "SUCCESS"
     # }
     req_id = request_instance['req_id']
     # TODO handle other return status
     # if request_instance['req_status'] != 'approved':
-    request_instance_status = request_instance_status(
+    request_instance_status_result = request_instance_status(
         active_session_headers, req_id)
-    return request_instance_status
+    return request_instance_status_result
 
 
 def request_instance_status(active_session_headers, req_id):
@@ -342,8 +537,8 @@ def request_instance_status(active_session_headers, req_id):
         "temp_password": "IH5%z4z/ilXD"
     }
 
-    # return assign_req_status
-    return 'new_instance'
+    return assign_req_status
+    # return 'new_instance'
 
 
 def update_env_instance(env, instance_info):
@@ -424,33 +619,46 @@ def use_ui(driver):
 
 def main():
     args = get_args()
-    config = get_config()
+
+    config = get_config(args)
 
     # ===== main loop through accounts =====
     for account in config:
         # login_info = get_login_info(config[account])
+        print("config: {}".format(account))
         login_info = config[account]
         active_session_headers = do_sign_in(login_info)
         if active_session_headers:
             is_active_instance = get_active_instance(active_session_headers)
+
         else:
             logging.critical('login failed')
-            exit()
+            continue
 
         if is_active_instance:
-            print('active instance found')
             instance_info = get_instance_info(active_session_headers)
-            print('active instance name: {}'.format(
+            print('instance name: {}'.format(
                 instance_info['instance_name']))
+            print('instance release: {}'.format(
+                instance_info['instance_release']))
+            print('instance state: {}'.format(
+                instance_info['instance_state']))
+
+            if args['release_instance'] and args['release_instance_name'] == account:
+                instance_id = instance_info['instance_id']
+                instance_action(active_session_headers,
+                                instance_id, "release_instance")
+
+            if args['reset_instance'] and args['reset_instance_name'] == account:
+                instance_id = instance_info['instance_id']
+                instance_action(active_session_headers,
+                                instance_id, "reset_instance")
             instance_awake = check_instance_awake(active_session_headers)
             print('instance wake status: {}'.format(instance_awake))
-        elif request_new_instance in args:
-            if 'version' in args:
-                version = args['version']
-            else:
-                version = get_available_versions(active_session_headers)[
-                    'default_version']
-
+        else:
+            preferred_version = int(login_info['preferred_version']) - 1
+            version = get_available_versions(active_session_headers)[
+                'available_versions'][preferred_version]
             new_instance_result = request_new_instance(
                 active_session_headers, version)
 

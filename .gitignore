@@ -12,3 +12,4 @@ wake_server.py
 manage_account.py
 R&D/
 .DS_Store
+config*
