@@ -35,6 +35,7 @@ ENV DISPLAY=:99
 COPY requirements.txt .
 RUN python3 -m pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org -r requirements.txt
 
+
 WORKDIR /app
 COPY . /app
 

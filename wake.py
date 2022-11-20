@@ -27,17 +27,23 @@ from cryptography.fernet import Fernet
 
 
 def get_args():
-    # Command line parameters:
-    # --env                 To get login information from a config file, default: .env
-    # --verbose             set logging to debug
-    # --not-headless        run head-full
-    # --config-file         use config-file default: config.json
-    # --add-account         add new account credentials to config file
-    # --reset-instance       reset your instance to its out-of-the-box settings. You will also receive new instance login credentials after the reset is complete
-    # --release instance    releases an instance back to pool
 
-    # TODO --schedule
     args = {}
+    if len(sys.argv) == 1:
+        print("\n\
+Control your SN Dev PDIs using this CLI tool. \n\
+You can wake your instances up, reset, upgrade, or release your instances, request a new instance with specific version.\n\
+--wake-up             wakes up all instances in config file \n\
+--request-instance    requests an instance with a specific version [TODO] \n\
+--reset-instance      resets an instance to its out-of-the-box settings \n\
+--release-instance    releases an instance back to pool \n\
+--upgrade-instance    upgrades an instance back to pool [TODO] \n\
+--add-account         add a new account credentials to config file \n\
+--config-file         use a specific config file instead of default config.json \n\
+--not-headless        show browser window (for debugging)\
+        ")
+        return False
+    # TODO --schedule
     if '--not-headless' in sys.argv:
         args['not-headless'] = True
 
@@ -312,8 +318,8 @@ def instance_action(active_session_headers, instance_id, action):
             "GET", reset_instance_url, headers=active_session_headers, data={})
         reset_instance_result = json.loads(reset_instance_response.text)
         if reset_instance_result['status'] == 'SUCCESS':
-            print('instance resetd')
-            sample_info_whike_reset = {
+            print('instance reset complete')
+            sample_info_reset = {
                 "instanceInfo": {
                     "btn_extend_instance_tooltip": "{\r\n    \"enabled\": \"Resets the inactivity timer on your personal developer instance so that you have another {$1} days with your instance.\",\r\n    \"disabled\": \"Your instance is recovering from the last time you extended your instance; please give it some time to rest before you extend it again.\"\r\n}",
                     "canUpgrade": "no",
@@ -443,7 +449,20 @@ def get_instance_info(active_session_headers):
         'last_info_updated': instance_info_raw['lastInfoUpdated'],
         'time_to_last_activity': instance_info_raw['timeToLastActivity'],
     }
+    print('instance name: {}'.format(
+        instance_info['instance_name']))
+    print('instance release: {}'.format(
+        instance_info['instance_release']))
+    print('instance release name: {}'.format(
+        instance_info['instance_release_name']))
 
+    print('instance state: {}'.format(
+        instance_info['instance_state']))
+
+    print('remaining inactivity days: {}'.format(
+        instance_info['remaining_inactivity_days']))
+    print('last info updated: {}'.format(
+        instance_info['last_info_updated']))
     return instance_info
 
 
@@ -619,7 +638,8 @@ def use_ui(driver):
 
 def main():
     args = get_args()
-
+    if args == False:
+        exit(0)
     config = get_config(args)
 
     # ===== main loop through accounts =====
@@ -637,12 +657,6 @@ def main():
 
         if is_active_instance:
             instance_info = get_instance_info(active_session_headers)
-            print('instance name: {}'.format(
-                instance_info['instance_name']))
-            print('instance release: {}'.format(
-                instance_info['instance_release']))
-            print('instance state: {}'.format(
-                instance_info['instance_state']))
 
             if args['release_instance'] and args['release_instance_name'] == account:
                 instance_id = instance_info['instance_id']
