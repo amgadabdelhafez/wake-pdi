@@ -12,14 +12,18 @@ from dotenv import dotenv_values
 import certifi
 import urllib3
 
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
+# from selenium import webdriver
+from seleniumwire import webdriver
+# from selenium.webdriver.chrome.options import Options
+
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support.wait import WebDriverWait
+from selenium.common.exceptions import TimeoutException
 
-from seleniumwire import webdriver
+#from seleniumwire import webdriver
 
 from webdriver_manager.chrome import ChromeDriverManager
 
@@ -146,7 +150,7 @@ def get_config(args):
                 config = first_run(config_file_name)
     else:
         print("no config found, generating config file..")
-        config = first_run()
+        config = first_run(config_file_name)
     return config
 
 
@@ -222,7 +226,9 @@ def do_sign_in(config):
         ca_certs=certifi.where()
     )
 
-    chrome_options = Options()
+    # chrome_options = Options()
+    chrome_options = webdriver.ChromeOptions()
+
     if '--not-headless' not in sys.argv:
         chrome_options.add_argument("--headless")
 
@@ -241,27 +247,47 @@ def do_sign_in(config):
     # os.environ["WDM_SSL_VERIFY"] = "0"
     os.environ["WDM_LOG_LEVEL"] = "0"
 
+    service = Service()
+
     dev_portal_url = "https://developer.servicenow.com/dev.do#!/home"
     signon_url = "https://signon.service-now.com/ssologin.do?RelayState=%252Fapp%252Fservicenow_ud%252Fexks6phcbx6R8qjln0x7%252Fsso%252Fsaml%253FRelayState%253Dhttps%25253A%25252F%25252Fdeveloper.servicenow.com%25252Fnavpage.do&redirectUri=&email="
 
-    driver = webdriver.Chrome(service=Service(
-        ChromeDriverManager().install()), options=chrome_options)
+    # ChromeDriverManager().install()), options=chrome_options)
+    driver = webdriver.Chrome(service=service, options=chrome_options)
     driver.get(signon_url)
     # Sign In
     print("signin in progress...")
-    # username input box
-    driver.find_element(By.ID, "username").click()
-    driver.find_element(By.ID, "username").send_keys(sn_dev_username)
-    # username submit button
-    driver.find_element(By.ID, "usernameSubmitButton").click()
-    WebDriverWait(driver, 5).until(
-        EC.element_to_be_clickable(driver.find_element(By.ID, "password"))
-    )
-    # password input box
-    driver.find_element(By.ID, "password").click()
-    driver.find_element(By.ID, "password").send_keys(sn_dev_password)
+
+    # Wait for the username field to be visible
+    try:
+        username_field = WebDriverWait(driver, 30).until(
+            EC.visibility_of_element_located((By.ID, "email"))
+        )
+        username_field.click()
+        username_field.send_keys(sn_dev_username)
+        username_submit_button = driver.find_element(By.ID, "username_submit_button")
+        username_submit_button.click()
+    except:
+        pass
+    
+    # Wait for the password field to be visible
+    try:
+        password_field = WebDriverWait(driver, 30).until(
+            EC.visibility_of_element_located((By.ID, "password"))
+        )
+        password_field.click()
+        password_field.send_keys(sn_dev_password)
+    except:
+        pass
+    
     # password submit button
-    driver.find_element(By.ID, "submitButton").click()
+    try:
+        password_submit_button = WebDriverWait(driver, 30).until(
+            EC.visibility_of_element_located((By.ID, "password_submit_button"))
+        )
+        password_submit_button.click()
+    except:
+        pass
     # wait to redirect to dev portal homepage
     try:
         WebDriverWait(driver, 30).until(
@@ -293,7 +319,8 @@ def do_sign_in(config):
         driver.quit()
     except:
         # TODO handle login failure
-        print("signin failed!")
+        print("post signin processing failed!")
+        print("exiting")
         return False
 
     return magic.headers
@@ -332,11 +359,6 @@ def instance_action(active_session_headers, instance_id, action):
                         "exceedMaxPollMessage": "",
                         "inProgressMessage": "Instance reset in progress",
                         "is_active": True,
-                        "markOffline": "True",
-                        "name": "Reset and reset instance",
-                        "needAlwaysOn": "False",
-                        "needBlockOther": "True",
-                        "needConfirmed": "True",
                         "needsPolling": "False",
                         "oldAppConfirmMessage": "This will reset your instance to its out-of-the-box settings, allowing you to start over fresh. Are you sure you want to reset your instance?",
                         "requestSubmittedMessage": "An instance reset request has been submitted and the instance may not be available temporarily. You will receive an email when the instance is back up",
@@ -374,7 +396,7 @@ def instance_action(active_session_headers, instance_id, action):
                     "opStatus": "Instance reset is in progress",
                     "release": "Tokyo",
                     "releaseName": "Tokyo Patch 1",
-                    "remaingHoursOfMaintenenace": 0,
+                    "remainingHoursOfMaintenance": 0,
                     "remainingInactivityDays": 10,
                     "remainingInactivityDaysUnitStr": "days",
                     "shortDesc": "EMAIL DISABLED",
@@ -522,7 +544,7 @@ def request_new_instance(active_session_headers, version):
     #     "assign_now": "yes",
     #     "is_version_preference_updated": False,
     #     "message": "Thank you for participating in the ServiceNow Developer Program.  Your request for an instance has been approved.",
-    #     "req_id": "jkhfjhfdvbkjmbnbftyuyjhgkljlkgkjg",
+    #     "req_id": "xxx",
     #     "req_status": "approved",
     #     "status": "SUCCESS"
     # }
@@ -673,6 +695,7 @@ def main():
             preferred_version = int(login_info['preferred_version']) - 1
             version = get_available_versions(active_session_headers)[
                 'available_versions'][preferred_version]
+            print('Requesting a new instance..')
             new_instance_result = request_new_instance(
                 active_session_headers, version)
 
