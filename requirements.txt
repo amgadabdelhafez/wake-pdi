@@ -8,3 +8,4 @@ Python-dotenv==0.20.0
 selenium-wire==5.1.0
 fernet==1.0.1
 cryptography==37.0.2
+blinker<1.8.0
