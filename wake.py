@@ -3,8 +3,18 @@ from utils import get_args
 from config import get_config
 from auth import do_sign_in
 import instance 
+import os
 
-logging.basicConfig(level=logging.INFO)
+# Create logs directory if it doesn't exist
+os.makedirs('logs', exist_ok=True)
+
+# Setup logging to both file and console
+logging.basicConfig(level=logging.INFO,
+                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                   handlers=[
+                       logging.FileHandler('logs/wake.log'),
+                       logging.StreamHandler()
+                   ])
 logger = logging.getLogger(__name__)
 
 def main():
@@ -21,9 +31,7 @@ def main():
     for account in config:
         logger.info(f"Processing config: {account}")
         login_info = config[account]
-        logger.info("Attempting to sign in")
-        
-        logger.info("Using Selenium-based authentication")
+        logger.info("Attempting to sign in")        
         session = do_sign_in(login_info)
         
         if session :
@@ -32,16 +40,13 @@ def main():
             logger.info(f"User info: {user_info}")
             instance_details = instance.get_instance_details(session.magic_link)
             logger.info(f"Instance details: {instance_details['instance_id']}")
-            # is_logged_in, cookies = instance.get_instance_id(session)
             instance_info = instance.get_instance_info(session)
             logger.info(f"Instance info: {instance_info}")
             # Check for any useful information in the response
             if isinstance(instance_info, dict):
                 for key, value in instance_info.items():
                     logger.debug(f"Key: {key}, Value: {value}")
-                if 'sys_id' in key:
-                        logger.info(f"Found instance sys_id: {value}")
-       
+
     logger.info("Wake.py execution completed")
 
 if __name__ == '__main__':

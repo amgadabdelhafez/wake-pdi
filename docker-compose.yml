@@ -2,7 +2,23 @@ version: '3.4'
 
 services:
   wakepdi:
+    container_name: wakepdi
     image: wakepdi
     build:
       context: .
       dockerfile: ./Dockerfile
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+      - ./logs:/app/logs
+      - ./archive:/app/archive
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=UTC
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; os.path.exists('/app/logs/wake.log') or exit(1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

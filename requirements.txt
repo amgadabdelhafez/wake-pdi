@@ -1,11 +1,25 @@
-selenium==4.1.0
-urllib3==1.26.8
-webdriver-manager==3.5.2
-PyVirtualDisplay==2.2
-xvfbwrapper==0.2.9
-schedule==1.1.0
-Python-dotenv==0.20.0
+# Web automation
+selenium==4.15.2
 selenium-wire==5.1.0
+webdriver-manager==4.0.1
+
+# HTTP and requests
+requests==2.31.0
+urllib3==1.26.18
+
+# Display handling
+PyVirtualDisplay==3.0
+xvfbwrapper==0.2.9
+
+# Scheduling and timing
+schedule==1.2.1
+
+# Configuration and environment
+python-dotenv==1.0.0
+
+# Encryption and security
+cryptography==41.0.7
 fernet==1.0.1
-cryptography==37.0.2
+
+# Compatibility requirements
 blinker<1.8.0

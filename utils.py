@@ -1,4 +1,5 @@
 import sys
+import json
 
 def get_args():
     args = {}
@@ -49,3 +50,46 @@ You can wake your instances up, reset, upgrade, or release your instances, reque
         args['reset_instance'] = False
 
     return args
+
+def print_result(data):
+
+    # Parse JSON data
+    instance_info = json.loads(data)
+
+    # Extract and print useful information
+    print("Instance Information:")
+    print("---------------------")
+    print(f"Instance Name: {instance_info.get('name')}")
+    print(f"URL: {instance_info.get('url')}")
+    print(f"Status: {instance_info.get('instanceStatus', {}).get('display_state')}")
+    print(f"State: {instance_info.get('instanceStatus', {}).get('state')}")
+
+    print("\nDeveloper Controls:")
+    print("-------------------")
+    print(f"Can Activate: {instance_info.get('canActivate')}")
+    print(f"Extension Button Displayed: {instance_info.get('display_btn_extend_instance')}")
+    print(f"Tooltip: {json.loads(instance_info['btn_extend_instance_tooltip']).get('enabled')}")
+
+    print("\nRelease Information:")
+    print("--------------------")
+    print(f"Release: {instance_info.get('release')}")
+    print(f"Full Release Version: {instance_info.get('full_release')}")
+    print(f"Upgrade Version: {instance_info.get('upgradeVersion')}")
+
+    print("\nMaintenance and Activity Status:")
+    print("--------------------------------")
+    print(f"Forced Maintenance: {instance_info.get('forced_maintenance')}")
+    print(f"Under Unplanned Maintenance: {instance_info.get('underUnplannedMaintenance')}")
+    print(f"Time Since Last Activity: {instance_info.get('timeToLastActivity')}")
+    print(f"Days Since Last Extension: {instance_info.get('daysSinceExtended')}")
+    print(f"Remaining Inactivity Days: {instance_info.get('remainingInactivityDays')} days")
+
+    print("\nInstalled Applications:")
+    print("------------------------")
+    for app, status in instance_info.get("installedApps", {}).items():
+        print(f"{app}: {status}")
+
+    print("\nAdditional Information:")
+    print("-----------------------")
+    print(f"Temporary Password: {instance_info.get('tempPassword')}")
+    print(f"System ID: {instance_info.get('sys_id')}")

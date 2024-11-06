@@ -4,21 +4,24 @@ __pycache__
 .venv/
 .DS_Store
 R&D/
-.env*
-SN*
-config*
 
-cronjob
-dec_key.bin
-regex
-favicon.ico
-wake.sh
-wake.log
+# Config files
+config/
+*.env*
+config*.json
 
-wake_server.py
-manage_account.py
+# Data files
+data/
+*.pickle
+*_info.json
 
-session.pickle
+# Logs
+logs/
+*.log
 
-instance_info.json
-user_info.json
+# Archive
+archive/
+
+# Other
+.git/
+.github/

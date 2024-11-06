@@ -4,6 +4,7 @@ import time
 import logging
 import gzip
 import io
+import os
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -55,19 +56,16 @@ def get_instance_info(session):
 
     try:
         logger.debug(f"Sending request to: {url}")
-        # response = session.get(url, headers=headers)
         response = requests.request("GET", url, headers=headers, data=payload)
 
         if response.status_code == 200:
             instance_info = json.loads(response.text)['result']['instanceInfo']
-            # print instance_info dict items
-
-            logger.debug(f"Instance info data: {json.dumps(instance_info, indent=2)}")
-           
-            # save instance info  to file for later use
-            # with open('instance_info.json', 'w') as f:
-            #     json.dump(instance_info, f, indent=2)
-
+            # Ensure data directory exists
+            os.makedirs('data', exist_ok=True)
+            # save instance info to file for later use
+            with open('data/instance_info.json', 'w') as f:
+                json.dump(instance_info, f, indent=2)
+            return instance_info
 
         else:
             logger.warning(f"Failed to get instance info. Status code: {response.status_code}")
@@ -83,14 +81,13 @@ def get_user_info(session):
     try:
         logger.debug(f"Sending request to: {url}")
         response = session.get(url, headers=headers)
-        logger.debug(f"User info request status code: {response.status_code}")
-        logger.debug(f"User info response content: {response.text}")
-        # save response to file for later use
-        # with open('user_info.json', 'w') as f:
-        #     json.dump(response.json(), f, indent=2)
         if response.status_code == 200:
             data = response.json()
-            logger.debug(f"User info data: {json.dumps(data, indent=2)}")
+            # Ensure data directory exists
+            os.makedirs('data', exist_ok=True)
+            # save response to file for later use
+            with open('data/user_info.json', 'w') as f:
+                json.dump(data, f, indent=2)
             return True, data
         else:
             logger.warning(f"Failed to get user info. Status code: {response.status_code}")

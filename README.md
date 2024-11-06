@@ -1,72 +1,166 @@
 # PDI Control
+
+Control your ServiceNow Developer Portal Instances (PDIs) using this CLI tool. Manage instance wake-up, reset, upgrade, and release operations.
+
 ## Table of Contents
 
-- [About](#about)
-- [Getting Started](#getting_started)
+- [Features](#features)
+- [Directory Structure](#directory-structure)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+  - [Local Installation](#local-installation)
+  - [Docker Installation](#docker-installation)
+- [Configuration](#configuration)
 - [Usage](#usage)
-- [Contributing](../CONTRIBUTING.md)
 
-## About <a name = "about"></a>
+## Features
 
-Control your SN Dev PDIs using this CLI tool. it can wake your instances up, reset, upgrade, or release your instances, request a new instance with specific version.
+- Wake up instances automatically
+- Reset instances to out-of-the-box settings
+- Release instances back to pool
+- Upgrade instances [TODO]
+- Add and manage multiple accounts
+- Configurable instance preferences
+- Detailed logging
 
-## Getting Started <a name = "getting_started"></a>
-
-These instructions will get you a copy of the project up and running on your local machine for development and testing purposes. See [deployment](#deployment) for notes on how to deploy the project on a live system.
-
-### Prerequisites
-
-Details in requirements.txt and Dockerfile
-
+## Directory Structure
 
 ```
-chromedriver
-google-chrome
-
-selenium
-selenium-wire
-webdriver-manager
-PyVirtualDisplay
-urllib3
-cryptography
-fernet
+wake-pdi/
+├── data/               # Runtime data storage
+│   ├── config.json    # Configuration file
+│   ├── instance_info.json
+│   └── user_info.json
+├── config/            # Environment configuration
+│   └── .env_*        # Environment files
+├── logs/              # Application logs
+│   └── wake.log      # Main log file
+├── archive/           # Backup and archived files
+├── wake.py           # Main application
+├── instance.py       # Instance management
+├── auth.py          # Authentication handling
+├── utils.py         # Utility functions
+├── config.py        # Configuration management
+├── requirements.txt  # Python dependencies
+├── Dockerfile       # Container definition
+└── docker-compose.yml # Container orchestration
 ```
 
-### Installing
+## Prerequisites
 
-Install dependencies to run local, or use Dockerfile to run in a container.
+- Python 3.8 or higher
+- Chrome/Chromium browser
+- ChromeDriver (matching Chrome version)
 
-```
-# install local
-pip install -r requirements.txt
+For Docker installation, only Docker and Docker Compose are required.
+
+## Installation
+
+### Local Installation
+
+1. Clone the repository:
+
+   ```bash
+   git clone https://github.com/yourusername/wake-pdi.git
+   cd wake-pdi
+   ```
+
+2. Create virtual environment (recommended):
+
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # Linux/Mac
+   # or
+   .venv\Scripts\activate     # Windows
+   ```
+
+3. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+### Docker Installation
+
+1. Build and run using Docker Compose:
+   ```bash
+   docker compose build
+   docker compose up -d
+   ```
+
+The Docker setup includes:
+
+- Persistent volume mounts for data, config, and logs
+- Automatic container restart
+- Health monitoring
+- Non-root user security
+
+## Configuration
+
+1. First-time setup:
+
+   ```bash
+   python wake.py --add-account
+   ```
+
+   This will:
+
+   - Create necessary directories
+   - Generate encryption key
+   - Prompt for account credentials
+   - Create initial configuration
+
+2. Configuration files:
+   - `data/config.json`: Main configuration file
+   - `config/.env_*`: Environment-specific settings
+   - Logs are written to `logs/wake.log`
+
+## Usage
+
+Command line arguments:
+
+```bash
+python wake.py [options]
+
+Options:
+  --wake-up             Wake up all instances in config file
+  --reset-instance      Reset instance to out-of-the-box settings
+  --release-instance    Release instance back to pool
+  --upgrade-instance    Upgrade instance [TODO]
+  --add-account         Add new account credentials
+  --config-file         Use specific config file (default: data/config.json)
+  --not-headless       Show browser window (debugging)
 ```
 
-```
-# install as docker container
-docker compose build
+### Running with Docker
+
+```bash
+# Start the container
+docker compose up -d
+
+# View logs
+docker compose logs -f
+
+# Stop the container
+docker compose down
 ```
 
-End with an example of getting some data out of the system or using it for a little demo.
+### Examples
 
-## Usage <a name = "usage"></a>
-```
---wake-up             wakes up all instances in config file
---reset-instance      resets an instance to its out-of-the-box settings
---release-instance    releases an instance back to pool
---upgrade-instance    upgrades an instance back to pool [TODO]
---add-account         add a new account credentials to config file
---config-file         use a specific config file instead of default config.json
---not-headless        show browser window (for debugging)
-```
+1. Wake up all instances:
 
-```
-# run local
-python wake.py
-```
+   ```bash
+   python wake.py --wake-up
+   ```
 
-```
-# run as docker container
-docker compose up
-```
+2. Add new account:
 
+   ```bash
+   python wake.py --add-account
+   ```
 
+3. Use custom config:
+   ```bash
+   python wake.py --config-file data/custom-config.json --wake-up
+   ```
+
+Logs are available in `logs/wake.log` for monitoring and debugging.
