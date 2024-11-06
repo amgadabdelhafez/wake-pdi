@@ -61,19 +61,19 @@ def main():
                 logger.info("checking user info")
                 user_info = instance.get_user_info(session)
                 for key, value in user_info.items():
-                    logger.info(f"Key: {key}, Value: {value}")
+                    logger.info(f"{key}: {value}")
 
                 logger.info("checking instance details")
                 instance_details = instance.get_instance_details(session.magic_link)
                 for key, value in instance_details.items():
-                    logger.info(f"Key: {key}, Value: {value}")
+                    logger.info(f"{key}: {value}")
 
                 logger.info("checking instance info")
                 instance_info = instance.get_instance_info(session)
                 # Check for any useful information in the response
                 if isinstance(instance_info, dict):
                     for key, value in instance_info.items():
-                        logger.info(f"Key: {key}, Value: {value}")
+                        logger.info(f"{key}: {value}")
             except Exception as e:
                 logger.error(f"Error: {e}")
                 continue
