@@ -4,14 +4,91 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from cryptography.fernet import Fernet
+from webdriver_manager.chrome import ChromeDriverManager
 from config import get_key
 import requests
 import logging
 import json
 import pickle
+import subprocess
+import os
+import re
 
-logging.basicConfig(level=logging.DEBUG)
+# Set up logging
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+# Create logs directory if it doesn't exist
+os.makedirs('logs', exist_ok=True)
+
+# File handler
+file_handler = logging.FileHandler('logs/wake.log')
+file_handler.setLevel(logging.DEBUG)
+file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(file_formatter)
+
+# Console handler
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_formatter = logging.Formatter('%(levelname)s: %(message)s')
+console_handler.setFormatter(console_formatter)
+
+# Add handlers to logger
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
+def get_chrome_version():
+    """Get installed Chrome version"""
+    try:
+        if os.path.exists("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"):
+            output = subprocess.check_output(
+                ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "--version"],
+                stderr=subprocess.STDOUT
+            )
+            version = re.search(r"Google Chrome (\d+\.\d+\.\d+)", output.decode()).group(1)
+            return version
+    except Exception as e:
+        logger.debug(f"Error getting Chrome version: {e}")
+    return None
+
+def get_chromedriver():
+    """Get ChromeDriver with fallback mechanisms"""
+    try:
+        # First try with exact version
+        chrome_version = get_chrome_version()
+        if chrome_version:
+            major_version = chrome_version.split('.')[0]
+            try:
+                return ChromeDriverManager(version=f"{major_version}.0.0").install()
+            except Exception as e:
+                logger.debug(f"Could not get exact version, trying latest: {e}")
+
+        # Fallback to latest version
+        return ChromeDriverManager().install()
+    except Exception as e:
+        logger.error(f"Error installing ChromeDriver: {e}")
+        # Final fallback to system ChromeDriver
+        if os.path.exists("/usr/local/bin/chromedriver"):
+            return "/usr/local/bin/chromedriver"
+        raise Exception("Could not find or install ChromeDriver")
+
+def verify_chromedriver(driver_path):
+    """Remove quarantine attribute from chromedriver if it exists"""
+    try:
+        if driver_path and os.path.exists(driver_path):
+            # Check if quarantine attribute exists
+            result = subprocess.run(['xattr', '-l', driver_path], capture_output=True, text=True)
+            if 'com.apple.quarantine' in result.stdout:
+                subprocess.run(['xattr', '-d', 'com.apple.quarantine', driver_path], check=True)
+                logger.info(f"Successfully removed quarantine attribute from {driver_path}")
+            else:
+                logger.debug(f"No quarantine attribute found on {driver_path}")
+            
+            # Set executable permission
+            os.chmod(driver_path, 0o755)
+            logger.debug(f"Set executable permission on {driver_path}")
+    except Exception as e:
+        logger.debug(f"Chromedriver verification note: {e}")
 
 def do_sign_in(config):
     sn_dev_username = config["sn_dev_username"]
@@ -31,7 +108,11 @@ def do_sign_in(config):
     chrome_options.add_experimental_option("excludeSwitches", ["enable-logging", "enable-automation"])
     chrome_options.add_experimental_option("useAutomationExtension", False)
 
-    service = Service()
+    # Get ChromeDriver path and verify it
+    driver_path = get_chromedriver()
+    logger.debug(f"ChromeDriver path: {driver_path}")
+    verify_chromedriver(driver_path)
+    service = Service(executable_path=driver_path)
 
     signon_url = "https://signon.service-now.com/ssologin.do?RelayState=%252Fapp%252Fservicenow_ud%252Fexks6phcbx6R8qjln0x7%252Fsso%252Fsaml%253FRelayState%253Dhttps%25253A%25252F%25252Fdeveloper.servicenow.com%25252Fnavpage.do&redirectUri=&email="
 
@@ -85,7 +166,7 @@ def do_sign_in(config):
             if (str(errorPlaceholderException).find("Unable to locate element") > -1):
                 logger.error("Unable to locate error")
         driver.quit()
-        return None, None
+        return None
 
     # Capture the magic link request
     try:
@@ -100,7 +181,7 @@ def do_sign_in(config):
 
     # Get the cookies after successful login
     cookies = driver.get_cookies()
-    # driver.quit()
+    driver.quit()
 
     # Convert cookies to a format that can be used with requests
     session = requests.Session()
@@ -110,8 +191,5 @@ def do_sign_in(config):
     # Add the magic link to the session
     session.magic_link = magic_link
     session.processed_cookies = session.cookies.get_dict()
-    # save the whole session object to file for later use
-    # with open('session.pickle', 'wb') as f:
-    #     pickle.dump(session, f)
 
     return session

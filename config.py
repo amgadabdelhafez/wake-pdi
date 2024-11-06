@@ -3,6 +3,10 @@ import json
 import getpass
 from cryptography.fernet import Fernet
 from dotenv import dotenv_values
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 def get_key():
     return bytes(dotenv_values('archive/dec_key.bin')['key'], 'utf-8')
@@ -51,7 +55,7 @@ def get_config(args):
     os.makedirs('data', exist_ok=True)
 
     if os.path.exists(config_file_name):
-        print(f"config file found: {config_file_name}")
+        logger.debug(f"config file found: {config_file_name}")
         with open(config_file_name, "r") as config_file:
             config_file_content = config_file.read()
             if config_file_content != '':
@@ -62,12 +66,12 @@ def get_config(args):
                     with open(config_file_name, "w") as config_file:
                         json.dump(config, config_file, indent=4)
                 config = json.loads(config_file_content)
-                print(f"number of accounts found: {len(config.keys())}")
+                logger.debug(f"number of accounts found: {len(config.keys())}")
             else:
-                print("no accounts found, updating config file..")
+                logger.debug("no accounts found, updating config file..")
                 config = first_run(config_file_name)
     else:
-        print("no config found, generating config file..")
+        logger.debug("no config found, generating config file..")
         config = first_run(config_file_name)
     return config
 

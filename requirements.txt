@@ -1,11 +1,19 @@
 # Web automation
 selenium==4.15.2
 selenium-wire==5.1.0
-webdriver-manager==4.0.1
+webdriver-manager==4.0.2
 
 # HTTP and requests
 requests==2.31.0
-urllib3==1.26.18
+urllib3>=2.0.7,<3.0.0
+charset-normalizer>=3.0.1
+certifi>=2023.7.22
+
+# Browser automation dependencies
+h2>=4.1.0
+wsproto>=1.2.0
+hyperframe>=6.0.1
+kaitaistruct>=0.10
 
 # Display handling
 PyVirtualDisplay==3.0
@@ -20,6 +28,10 @@ python-dotenv==1.0.0
 # Encryption and security
 cryptography==41.0.7
 fernet==1.0.1
+pyOpenSSL>=23.2.0
+
+# Data handling
+pickle-mixin>=1.0.2
 
 # Compatibility requirements
 blinker<1.8.0

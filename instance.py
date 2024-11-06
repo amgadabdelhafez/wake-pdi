@@ -88,7 +88,7 @@ def get_user_info(session):
             # save response to file for later use
             with open('data/user_info.json', 'w') as f:
                 json.dump(data, f, indent=2)
-            return True, data
+            return data
         else:
             logger.warning(f"Failed to get user info. Status code: {response.status_code}")
             return False, None
