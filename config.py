@@ -9,12 +9,12 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 def get_key():
-    return bytes(dotenv_values('archive/dec_key.bin')['key'], 'utf-8')
+    return bytes(dotenv_values('data/dec_key.bin')['key'], 'utf-8')
 
 def generate_key():
     key = Fernet.generate_key()
-    os.makedirs('archive', exist_ok=True)
-    with open('archive/dec_key.bin', "w") as key_file:
+    os.makedirs('data', exist_ok=True)
+    with open('data/dec_key.bin', "w") as key_file:
         key_file.write("key=" + key.decode("utf-8") + "\n")
     return key
 
