@@ -1,6 +1,6 @@
 services:
   wakepdi:
-    image: amgadstartup/wake-pdi:arm64
+    image: amgadstartup/wake-pdi:raspi
     container_name: wakepdi
     volumes:
       - wake-data:/app/data
