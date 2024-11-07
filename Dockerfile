@@ -1,5 +1,5 @@
-# Use Raspberry Pi compatible base image
-FROM arm32v7/python:3.8-slim
+# Use ARM64 compatible base image
+FROM arm64v8/python:3.8-slim
 
 # Keeps Python from generating .pyc files in the container
 ENV PYTHONDONTWRITEBYTECODE=1
