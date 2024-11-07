@@ -63,8 +63,8 @@ def get_instance_info(session):
             # Ensure data directory exists
             os.makedirs('data', exist_ok=True)
             # save instance info to file for later use
-            with open('data/instance_info.json', 'w') as f:
-                json.dump(instance_info, f, indent=2)
+            # with open('data/instance_info.json', 'w') as f:
+            #     json.dump(instance_info, f, indent=2)
             return instance_info
 
         else:
@@ -86,8 +86,8 @@ def get_user_info(session):
             # Ensure data directory exists
             os.makedirs('data', exist_ok=True)
             # save response to file for later use
-            with open('data/user_info.json', 'w') as f:
-                json.dump(data, f, indent=2)
+            # with open('data/user_info.json', 'w') as f:
+            #     json.dump(data, f, indent=2)
             return data
         else:
             logger.warning(f"Failed to get user info. Status code: {response.status_code}")
