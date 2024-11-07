@@ -14,6 +14,16 @@ class ChromeError(Exception):
     """Custom exception for Chrome-related errors"""
     pass
 
+def is_arm() -> bool:
+    """
+    Check if running on ARM architecture
+    
+    Returns:
+        bool: True if running on ARM, False otherwise
+    """
+    machine = platform.machine().lower()
+    return any(arm in machine for arm in ['arm', 'aarch'])
+
 def get_chrome_path() -> Optional[str]:
     """
     Get Chrome executable path based on platform
@@ -27,12 +37,21 @@ def get_chrome_path() -> Optional[str]:
     elif system == "Windows":
         return "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
     elif system == "Linux":
-        chrome_paths = [
-            "/usr/bin/google-chrome",
-            "/usr/bin/chrome",
-            "/usr/bin/chromium",
-            "/usr/bin/chromium-browser",
-        ]
+        # ARM-specific paths first
+        if is_arm():
+            chrome_paths = [
+                "/usr/bin/chromium",
+                "/usr/bin/chromium-browser",
+                "/usr/bin/chromium-chromium",
+                "/usr/bin/google-chrome",
+            ]
+        else:
+            chrome_paths = [
+                "/usr/bin/google-chrome",
+                "/usr/bin/chrome",
+                "/usr/bin/chromium",
+                "/usr/bin/chromium-browser",
+            ]
         for path in chrome_paths:
             if os.path.exists(path):
                 return path
@@ -40,32 +59,33 @@ def get_chrome_path() -> Optional[str]:
 
 def get_chrome_version() -> Optional[str]:
     """
-    Get installed Chrome version
+    Get installed Chrome/Chromium version
     
     Returns:
-        str: Chrome version or None if not found
+        str: Chrome/Chromium version or None if not found
         
     Raises:
-        ChromeError: If Chrome is not found or version cannot be determined
+        ChromeError: If Chrome/Chromium is not found or version cannot be determined
     """
     try:
         chrome_path = get_chrome_path()
         if not chrome_path:
-            raise ChromeError("Chrome executable not found")
+            raise ChromeError("Chrome/Chromium executable not found")
 
         output = subprocess.check_output(
             [chrome_path, "--version"],
             stderr=subprocess.STDOUT
         )
-        version_match = re.search(r"Chrome (\d+\.\d+\.\d+)", output.decode())
+        # Support both Chrome and Chromium version strings
+        version_match = re.search(r"(?:Chrome|Chromium) (\d+\.\d+\.\d+)", output.decode())
         if not version_match:
-            raise ChromeError("Could not determine Chrome version")
+            raise ChromeError("Could not determine Chrome/Chromium version")
         
         return version_match.group(1)
     except subprocess.CalledProcessError as e:
-        raise ChromeError(f"Error executing Chrome: {e}")
+        raise ChromeError(f"Error executing Chrome/Chromium: {e}")
     except Exception as e:
-        logger.debug(f"Error getting Chrome version: {e}")
+        logger.debug(f"Error getting Chrome/Chromium version: {e}")
         return None
 
 def get_chromedriver() -> str:
@@ -79,8 +99,32 @@ def get_chromedriver() -> str:
         ChromeError: If ChromeDriver cannot be installed or found
     """
     try:
-        # First try with exact version
         chrome_version = get_chrome_version()
+        
+        # Handle ARM architecture
+        if is_arm():
+            # For ARM, prefer system-installed chromedriver that matches architecture
+            system_drivers = [
+                "/usr/bin/chromedriver",
+                "/usr/local/bin/chromedriver",
+                "/snap/bin/chromium.chromedriver"
+            ]
+            for driver in system_drivers:
+                if os.path.exists(driver):
+                    logger.info(f"Using system ChromeDriver for ARM: {driver}")
+                    return driver
+            
+            # If no system driver found, try installing one
+            try:
+                if chrome_version:
+                    major_version = chrome_version.split('.')[0]
+                    return ChromeDriverManager(version=f"{major_version}.0.0").install()
+                return ChromeDriverManager().install()
+            except Exception as e:
+                logger.error(f"Failed to install ChromeDriver for ARM: {e}")
+                raise ChromeError("Could not find or install ChromeDriver for ARM architecture")
+        
+        # Non-ARM architecture handling
         if chrome_version:
             major_version = chrome_version.split('.')[0]
             try:
@@ -148,9 +192,10 @@ def setup_chrome_driver() -> webdriver.Chrome:
         chrome_options.add_experimental_option("excludeSwitches", ["enable-logging", "enable-automation"])
         chrome_options.add_experimental_option("useAutomationExtension", False)
 
-        # Handle Docker/CI environment
-        if os.environ.get('CHROME_NO_SANDBOX') or os.environ.get('CI'):
+        # Handle Docker/CI environment or ARM
+        if os.environ.get('CHROME_NO_SANDBOX') or os.environ.get('CI') or is_arm():
             chrome_options.add_argument("--no-sandbox")
+            chrome_options.add_argument("--disable-gpu")  # Often needed on ARM
         
         # Handle headless mode
         if os.environ.get('CHROME_HEADLESS', '').lower() == 'true':
