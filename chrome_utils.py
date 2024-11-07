@@ -142,9 +142,23 @@ def get_chromedriver() -> str:
             return system_driver
         raise ChromeError("Could not find or install ChromeDriver")
 
+def is_system_binary(path: str) -> bool:
+    """
+    Check if a path points to a system binary
+    
+    Args:
+        path: Path to check
+        
+    Returns:
+        bool: True if path is a system binary, False otherwise
+    """
+    system_paths = ['/usr/bin/', '/usr/local/bin/', '/snap/bin/']
+    return any(path.startswith(sys_path) for sys_path in system_paths)
+
 def verify_chromedriver(driver_path: str) -> None:
     """
-    Remove quarantine attribute from chromedriver if it exists
+    Remove quarantine attribute from chromedriver if it exists and set permissions
+    if needed. System binaries are skipped as they should already be properly configured.
     
     Args:
         driver_path: Path to ChromeDriver executable
@@ -156,6 +170,11 @@ def verify_chromedriver(driver_path: str) -> None:
         raise ChromeError(f"ChromeDriver not found at {driver_path}")
 
     try:
+        # Skip permission modifications for system binaries
+        if is_system_binary(driver_path):
+            logger.debug(f"Skipping permission modifications for system binary: {driver_path}")
+            return
+
         if platform.system() == "Darwin":  # macOS only
             # Check if quarantine attribute exists
             result = subprocess.run(['xattr', '-l', driver_path], capture_output=True, text=True)
@@ -165,7 +184,7 @@ def verify_chromedriver(driver_path: str) -> None:
             else:
                 logger.debug(f"No quarantine attribute found on {driver_path}")
         
-        # Set executable permission
+        # Set executable permission only for non-system binaries
         os.chmod(driver_path, 0o755)
         logger.debug(f"Set executable permission on {driver_path}")
     except Exception as e:
