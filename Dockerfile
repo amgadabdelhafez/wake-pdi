@@ -1,13 +1,15 @@
-# For more information, please refer to https://aka.ms/vscode-docker-python
-FROM python:3.8-slim
+# Use Raspberry Pi compatible base image
+FROM arm32v7/python:3.8-slim
 
 # Keeps Python from generating .pyc files in the container
 ENV PYTHONDONTWRITEBYTECODE=1
-
-# Turns off buffering for easier container logging
 ENV PYTHONUNBUFFERED=1
+ENV TZ=UTC
+ENV DISPLAY=:99
+ENV CHROME_NO_SANDBOX=true
+ENV CHROME_HEADLESS=true
 
-# Install system dependencies
+# Install system dependencies including build tools
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
@@ -17,48 +19,48 @@ RUN apt-get update && apt-get install -y \
     libxcb1 \
     unzip \
     curl \
+    tzdata \
+    chromium \
+    chromium-driver \
+    gcc \
+    python3-dev \
+    libffi-dev \
+    libssl-dev \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
-# Install google chrome
-RUN wget --no-check-certificate -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list' \
-    && apt-get update \
-    && apt-get install -y google-chrome-stable \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install chromedriver
-RUN wget --no-check-certificate -O /tmp/chromedriver.zip http://chromedriver.storage.googleapis.com/`curl -sS chromedriver.storage.googleapis.com/LATEST_RELEASE`/chromedriver_linux64.zip \
-    && unzip /tmp/chromedriver.zip chromedriver -d /usr/local/bin/ \
-    && rm /tmp/chromedriver.zip
-
-# Set display port to avoid crash
-ENV DISPLAY=:99
-
-# Create app directory structure
 WORKDIR /app
 
-# Install pip requirements first for better caching
-COPY requirements.txt .
-RUN python3 -m pip install --no-cache-dir --trusted-host pypi.org --trusted-host files.pythonhosted.org -r requirements.txt
+# Copy Python files and requirements
+COPY requirements.txt wake.py auth.py auth_utils.py chrome_utils.py config.py instance.py logger.py utils.py ./
 
-# Create necessary directories
-RUN mkdir -p /app/logs /app/data /app/config /app/archive
+# Install Python dependencies
+RUN pip install --no-cache-dir wheel setuptools && \
+    pip install --no-cache-dir -r requirements.txt
 
-# Copy application
-COPY . .
+# Create necessary directories with proper permissions
+RUN mkdir -p /app/logs /app/data /app/config \
+    && chmod 777 /app/logs /app/data /app/config
 
-# Set proper permissions
-RUN chmod 777 /app/logs /app/data /app/config /app/archive
-
-# Creates a non-root user with an explicit UID and adds permission to access the /app folder
+# Create non-root user
 RUN adduser -u 5678 --disabled-password --gecos "" appuser \
     && chown -R appuser:appuser /app
 
+# Create symlinks for chromium
+RUN ln -s /usr/bin/chromium /usr/bin/google-chrome \
+    && ln -s /usr/bin/chromedriver /usr/local/bin/chromedriver
+
+# Switch to non-root user
 USER appuser
 
 # Add healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD python -c "import os; os.path.exists('/app/logs/wake.log') or exit(1)"
+    CMD python -c "\
+    import os, sys; \
+    sys.exit(0 if os.path.exists('/app/logs/wake.log') and \
+    os.access('/app/logs/wake.log', os.W_OK) else 1)"
 
-# During debugging, this entry point will be overridden. For more information, please refer to https://aka.ms/vscode-docker-python-debug
-CMD ["python", "wake.py"]
+# Start Xvfb and run the application
+CMD Xvfb :99 -screen 0 1280x1024x24 > /dev/null 2>&1 & \
+    sleep 1 && \
+    python wake.py

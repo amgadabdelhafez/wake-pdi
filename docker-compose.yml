@@ -1,24 +1,29 @@
-version: '3.4'
-
 services:
   wakepdi:
+    image: amgadstartup/wake-pdi:raspi
     container_name: wakepdi
-    image: wakepdi
-    build:
-      context: .
-      dockerfile: ./Dockerfile
     volumes:
-      - ./data:/app/data
-      - ./config:/app/config
-      - ./logs:/app/logs
-      - ./archive:/app/archive
+      - wake-data:/app/data
+      - wake-config:/app/config
+      - wake-logs:/app/logs
     environment:
       - PYTHONUNBUFFERED=1
       - TZ=UTC
+      - DISPLAY=:99
+      - CHROME_NO_SANDBOX=true
+      - CHROME_HEADLESS=true
+      - LOG_LEVEL=INFO
+    security_opt:
+      - seccomp=unconfined
+    platform: linux/arm/v7
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import os; os.path.exists('/app/logs/wake.log') or exit(1)"]
+      test: ["CMD", "python", "-c", "import os, sys; sys.exit(0 if os.path.exists('/app/logs/wake.log') and os.access('/app/logs/wake.log', os.W_OK) else 1)"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+
+volumes:
+  wake-data:
+  wake-config:
+  wake-logs:
