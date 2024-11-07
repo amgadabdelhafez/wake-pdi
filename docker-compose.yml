@@ -16,7 +16,6 @@ services:
     security_opt:
       - seccomp=unconfined
     platform: linux/arm64
-    restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import os, sys; sys.exit(0 if os.path.exists('/app/logs/wake.log') and os.access('/app/logs/wake.log', os.W_OK) else 1)"]
       interval: 30s
