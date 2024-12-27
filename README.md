@@ -12,6 +12,21 @@ Control your ServiceNow Developer Portal Instances (PDIs) using this Docker-base
 
 ## Docker Deployment
 
+### Using Docker Hub
+
+The project automatically builds and publishes multi-architecture Docker images to Docker Hub. You can pull the image using:
+
+```bash
+docker pull amgadabdelhafez/publicrepo:latest
+```
+
+Available tags:
+
+- `latest`: Latest version from the main branch
+- `YYYYMMDD-SHA`: Date and commit specific version (e.g., `20240327-a1b2c3d`)
+
+The images support both AMD64 and ARM64 architectures.
+
 ### Using Docker Compose
 
 1. Create a docker-compose.yml:
@@ -19,7 +34,7 @@ Control your ServiceNow Developer Portal Instances (PDIs) using this Docker-base
 ```yaml
 services:
   wakepdi:
-    image: amgadstartup/wake-pdi:arm64
+    image: amgadabdelhafez/publicrepo:latest
     container_name: wakepdi
     volumes:
       - wake-data:/app/data
@@ -34,7 +49,7 @@ services:
       - LOG_LEVEL=INFO
     security_opt:
       - seccomp=unconfined
-    platform: linux/arm64
+    # platform: linux/arm64  # Uncomment and specify if needed, image supports both amd64 and arm64
     restart: unless-stopped
 
 volumes:
@@ -54,14 +69,14 @@ docker compose up -d
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/amgadramses/wake-pdi.git
+git clone https://github.com/amgadabdelhafez/wake-pdi.git
 cd wake-pdi
 ```
 
 2. Build for ARM64 (Raspberry Pi):
 
 ```bash
-docker build -t amgadstartup/wake-pdi:arm64 .
+docker build -t amgadabdelhafez/publicrepo:latest .
 ```
 
 ## Configuration
@@ -88,10 +103,29 @@ The container uses three volumes:
 - `wake-config`: Configuration files
 - `wake-logs`: Application logs
 
+## CI/CD
+
+The project uses GitHub Actions for continuous integration and delivery:
+
+- Automatically builds Docker images for both AMD64 and ARM64 architectures
+- Pushes images to Docker Hub
+- Builds and tests pull requests without publishing
+- Uses GitHub Actions cache for faster builds
+- Tags images with date and commit SHA for versioning
+
+The workflow is triggered on:
+
+- Push to main branch
+- Pull requests
+- Manual workflow dispatch
+
 ## Docker Tags
 
-- `arm64`: For ARM64 devices (Raspberry Pi)
-- Latest version always available at `amgadstartup/wake-pdi:arm64`
+Available at `amgadabdelhafez/publicrepo`:
+
+- `latest`: Latest version from main branch
+- `YYYYMMDD-SHA`: Date and commit specific version
+- All images support both AMD64 and ARM64 architectures
 
 ## Contributing
 
