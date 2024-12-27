@@ -5,7 +5,7 @@ from cryptography.fernet import Fernet
 from dotenv import dotenv_values
 import logging
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
 
 def get_key():

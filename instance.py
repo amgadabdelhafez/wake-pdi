@@ -61,7 +61,7 @@ def get_instance_info(session):
         if response.status_code == 200:
             instance_info = json.loads(response.text)['result']['instanceInfo']
             # Ensure data directory exists
-            os.makedirs('data', exist_ok=True)
+            # os.makedirs('data', exist_ok=True)
             # save instance info to file for later use
             # with open('data/instance_info.json', 'w') as f:
             #     json.dump(instance_info, f, indent=2)
@@ -95,6 +95,158 @@ def get_user_info(session):
     except requests.RequestException as e:
         logger.error(f"User info request failed: {e}")
         return False, None
+
+def get_available_versions(session):
+    """Get available PDI versions"""
+    url = "https://developer.servicenow.com/devportal.do"
+    params = {
+        "sysparm_data": json.dumps({
+            "action": "product.release.versions",
+            "data": {}
+        })
+    }
+    headers = get_headers(session.processed_cookies)
+    
+    try:
+        response = requests.get(url, params=params, headers=headers, verify=False)
+        if response.status_code == 200:
+            return response.json()
+        logger.error(f"Failed to get versions. Status code: {response.status_code}")
+        return None
+    except Exception as e:
+        logger.error(f"Error getting versions: {e}")
+        return None
+
+def check_user_in_queue(session):
+    """Check if user is in queue for an instance"""
+    url = "https://developer.servicenow.com/devportal.do"
+    params = {
+        "sysparm_data": json.dumps({
+            "action": "dashboard.user_in_queue",
+            "data": {"release": "none"}
+        })
+    }
+    headers = get_headers(session.processed_cookies)
+    
+    try:
+        response = requests.get(url, params=params, headers=headers, verify=False)
+        if response.status_code == 200:
+            return response.json()
+        logger.error(f"Failed to check queue. Status code: {response.status_code}")
+        return None
+    except Exception as e:
+        logger.error(f"Error checking queue: {e}")
+        return None
+
+def request_instance(session, family="xanadu"):
+    """Request a new PDI instance"""
+    url = "https://developer.servicenow.com/devportal.do"
+    params = {
+        "sysparm_data": json.dumps({
+            "action": "dashboard.instance_request",
+            "data": {"family": family}
+        })
+    }
+    headers = get_headers(session.processed_cookies)
+    
+    try:
+        response = requests.get(url, params=params, headers=headers, verify=False)
+        if response.status_code == 200:
+            result = response.json()
+            if result.get("status") == "SUCCESS" and result.get("req_id"):
+                return result
+        logger.error(f"Failed to request instance. Status code: {response.status_code}")
+        return None
+    except Exception as e:
+        logger.error(f"Error requesting instance: {e}")
+        return None
+
+def check_request_status(session, req_id):
+    """Check the status of an instance request"""
+    url = "https://developer.servicenow.com/devportal.do"
+    params = {
+        "sysparm_data": json.dumps({
+            "action": "instance.ops.get_assign_req_status",
+            "data": {"assign_req_id": req_id}
+        })
+    }
+    headers = get_headers(session.processed_cookies)
+    
+    try:
+        response = requests.get(url, params=params, headers=headers, verify=False)
+        if response.status_code == 200:
+            return response.json()
+        logger.error(f"Failed to check status. Status code: {response.status_code}")
+        return None
+    except Exception as e:
+        logger.error(f"Error checking status: {e}")
+        return None
+
+def request_new_instance(session, family="xanadu", max_retries=30, retry_delay=10):
+    """
+    Main function to handle the complete instance request process
+    
+    Args:
+        session: The authenticated session object
+        family: The PDI family version to request (default: xanadu)
+        max_retries: Maximum number of status check retries
+        retry_delay: Delay between status checks in seconds
+        
+    Returns:
+        dict: Instance details if successful, None if failed
+    """
+    logger.info("Starting instance request process")
+    
+    # Check available versions
+    versions = get_available_versions(session)
+    if not versions:
+        logger.error("Failed to get available versions")
+        return None
+    
+    if family not in versions.get("family_name", []):
+        logger.error(f"Requested family {family} not available")
+        return None
+        
+    # Check if user is in queue
+    queue_status = check_user_in_queue(session)
+    if queue_status is None:
+        logger.error("Failed to check queue status")
+        return None
+    
+    # Request instance
+    request_result = request_instance(session, family)
+    if not request_result or not request_result.get("req_id"):
+        logger.error("Failed to request instance")
+        return None
+    
+    req_id = request_result["req_id"]
+    logger.info(f"Instance requested successfully. Request ID: {req_id}")
+    
+    # Check request status with retries
+    for attempt in range(max_retries):
+        status_result = check_request_status(session, req_id)
+        if not status_result:
+            logger.error("Failed to check request status")
+            return None
+            
+        status = status_result.get("status")
+        if status == "complete_success":
+            logger.info("Instance successfully provisioned")
+            return {
+                "instance_url": status_result.get("loginURL"),
+                "username": "admin",
+                "password": status_result.get("temp_password"),
+                "status": "success"
+            }
+        elif status in ["error", "failed"]:
+            logger.error(f"Instance request failed: {status_result.get('message')}")
+            return None
+            
+        logger.info(f"Instance not ready yet, checking again in {retry_delay} seconds...")
+        time.sleep(retry_delay)
+    
+    logger.error("Instance request timed out")
+    return None
 
 def check_available_endpoints(session):
     base_url = "https://developer.servicenow.com/api/snc/v1/dev"

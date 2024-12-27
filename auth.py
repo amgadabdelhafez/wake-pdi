@@ -51,8 +51,8 @@ def enter_credentials(driver: Any, username: str, password: str) -> bool:
 def wait_for_login_completion(driver: Any) -> bool:
     """Wait for login to complete successfully"""
     try:
-        WebDriverWait(driver, 30).until(
-            EC.url_to_be("https://developer.servicenow.com/dev.do#!/home")
+        WebDriverWait(driver, 60).until(
+            EC.url_to_be("https://developer.servicenow.com/dev.do")
         )
         logger.info("signin success")
         return True
@@ -93,7 +93,7 @@ def do_sign_in(config: Dict[str, str]) -> Optional[Any]:
 
         if not wait_for_login_completion(driver):
             logger.error(handle_login_error(driver))
-            return None
+            # return None
 
         # Wait for requests to complete
         time.sleep(2)

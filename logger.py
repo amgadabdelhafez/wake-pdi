@@ -103,6 +103,7 @@ def setup_logger(
     # Get or create logger
     logger = logging.getLogger(name)
     logger.setLevel(min(file_level, console_level))  # Set to lowest level
+    logger.propagate = False  # Prevent propagation to root logger
 
     # Only add handlers if they haven't been added yet
     if not logger.handlers:

@@ -85,7 +85,7 @@ def get_chrome_version() -> Optional[str]:
     except subprocess.CalledProcessError as e:
         raise ChromeError(f"Error executing Chrome/Chromium: {e}")
     except Exception as e:
-        logger.debug(f"Error getting Chrome/Chromium version: {e}")
+        logger.info(f"Error getting Chrome/Chromium version: {e}")
         return None
 
 def get_chromedriver() -> str:
@@ -99,22 +99,23 @@ def get_chromedriver() -> str:
         ChromeError: If ChromeDriver cannot be installed or found
     """
     try:
+        # Check for system binary first
+        system_drivers = [
+            "/usr/local/bin/chromedriver",
+            "/usr/bin/chromedriver",
+            "/snap/bin/chromium.chromedriver"
+        ]
+        for driver in system_drivers:
+            if os.path.exists(driver):
+                logger.info(f"Using existing system ChromeDriver: {driver}")
+                return driver
+
         chrome_version = get_chrome_version()
         
         # Handle ARM architecture
         if is_arm():
-            # For ARM, prefer system-installed chromedriver that matches architecture
-            system_drivers = [
-                "/usr/bin/chromedriver",
-                "/usr/local/bin/chromedriver",
-                "/snap/bin/chromium.chromedriver"
-            ]
-            for driver in system_drivers:
-                if os.path.exists(driver):
-                    logger.info(f"Using system ChromeDriver for ARM: {driver}")
-                    return driver
             
-            # If no system driver found, try installing one
+            # Try installing one for ARM
             try:
                 if chrome_version:
                     major_version = chrome_version.split('.')[0]
@@ -124,22 +125,24 @@ def get_chromedriver() -> str:
                 logger.error(f"Failed to install ChromeDriver for ARM: {e}")
                 raise ChromeError("Could not find or install ChromeDriver for ARM architecture")
         
-        # Non-ARM architecture handling
+        # Non-ARM architecture handling - only try to install if no system binary was found
         if chrome_version:
             major_version = chrome_version.split('.')[0]
             try:
-                return ChromeDriverManager(version=f"{major_version}.0.0").install()
+                # Try to get the latest driver version compatible with current Chrome
+                return ChromeDriverManager(chrome_type="google-chrome", version="latest").install()
             except Exception as e:
-                logger.debug(f"Could not get exact version, trying latest: {e}")
-
-        # Fallback to latest version
-        return ChromeDriverManager().install()
+                logger.info(f"Could not get latest version, trying fallback: {e}")
+                try:
+                    # Fallback to major version
+                    return ChromeDriverManager(version=major_version).install()
+                except Exception as e:
+                    logger.info(f"Could not get major version, trying latest: {e}")
+        
+        # Final fallback to latest version if all else fails
+        return ChromeDriverManager(chrome_type="google-chrome").install()
     except Exception as e:
         logger.error(f"Error installing ChromeDriver: {e}")
-        # Final fallback to system ChromeDriver
-        system_driver = "/usr/local/bin/chromedriver"
-        if os.path.exists(system_driver):
-            return system_driver
         raise ChromeError("Could not find or install ChromeDriver")
 
 def is_system_binary(path: str) -> bool:
@@ -172,7 +175,7 @@ def verify_chromedriver(driver_path: str) -> None:
     try:
         # Skip permission modifications for system binaries
         if is_system_binary(driver_path):
-            logger.debug(f"Skipping permission modifications for system binary: {driver_path}")
+            # logger.info(f"Skipping permission modifications for system binary: {driver_path}")
             return
 
         if platform.system() == "Darwin":  # macOS only
@@ -182,11 +185,11 @@ def verify_chromedriver(driver_path: str) -> None:
                 subprocess.run(['xattr', '-d', 'com.apple.quarantine', driver_path], check=True)
                 logger.info(f"Successfully removed quarantine attribute from {driver_path}")
             else:
-                logger.debug(f"No quarantine attribute found on {driver_path}")
+                logger.info(f"No quarantine attribute found on {driver_path}")
         
         # Set executable permission only for non-system binaries
         os.chmod(driver_path, 0o755)
-        logger.debug(f"Set executable permission on {driver_path}")
+        logger.info(f"Set executable permission on {driver_path}")
     except Exception as e:
         raise ChromeError(f"Failed to verify ChromeDriver: {e}")
 
@@ -229,7 +232,7 @@ def setup_chrome_driver() -> webdriver.Chrome:
 
         # Get ChromeDriver path and verify it
         driver_path = get_chromedriver()
-        logger.debug(f"ChromeDriver path: {driver_path}")
+        logger.info(f"ChromeDriver path: {driver_path}")
         verify_chromedriver(driver_path)
         service = Service(executable_path=driver_path)
 
