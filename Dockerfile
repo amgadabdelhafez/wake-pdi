@@ -61,6 +61,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     os.access('/app/logs/wake.log', os.W_OK) else 1)"
 
 # Start Xvfb and run the application
-CMD Xvfb :99 -screen 0 1280x1024x24 > /dev/null 2>&1 & \
-    sleep 1 && \
-    python wake.py --wake-up
+CMD ["sh", "-c", "Xvfb :99 -screen 0 1280x1024x24 > /dev/null 2>&1 & sleep 1 && python wake.py --wake-up"]

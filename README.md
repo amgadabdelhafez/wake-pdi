@@ -16,7 +16,7 @@ Control your ServiceNow Developer Portal Instances (PDIs) using this Docker-base
 The project automatically builds and publishes Docker images to Docker Hub. You can pull the image using:
 
 ```bash
-docker pull amgadabdelhafez/publicrepo:latest
+docker pull amgadabdelhafez/wakepdi:latest
 ```
 
 Available tags:
@@ -31,7 +31,7 @@ Available tags:
 ```yaml
 services:
   wakepdi:
-    image: amgadabdelhafez/publicrepo:latest
+    image: amgadabdelhafez/wakepdi:latest
     container_name: wakepdi
     volumes:
       - wake-data:/app/data
@@ -72,7 +72,7 @@ cd wake-pdi
 2. Build locally:
 
 ```bash
-docker build -t amgadabdelhafez/publicrepo:latest .
+docker build -t amgadabdelhafez/wakepdi:latest .
 ```
 
 ## Configuration
@@ -117,7 +117,7 @@ The workflow is triggered on:
 
 ## Docker Tags
 
-Available at `amgadabdelhafez/publicrepo`:
+Available at `amgadabdelhafez/wakepdi`:
 
 - `latest`: Latest version from main branch
 - `YYYYMMDD-SHA`: Date and commit specific version
