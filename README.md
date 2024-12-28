@@ -8,13 +8,12 @@ Control your ServiceNow Developer Portal Instances (PDIs) using this Docker-base
 - Reset instances to out-of-box settings
 - Release instances back to pool
 - Docker support for easy deployment
-- ARM64 compatible (Raspberry Pi)
 
 ## Docker Deployment
 
 ### Using Docker Hub
 
-The project automatically builds and publishes multi-architecture Docker images to Docker Hub. You can pull the image using:
+The project automatically builds and publishes Docker images to Docker Hub. You can pull the image using:
 
 ```bash
 docker pull amgadabdelhafez/publicrepo:latest
@@ -24,8 +23,6 @@ Available tags:
 
 - `latest`: Latest version from the main branch
 - `YYYYMMDD-SHA`: Date and commit specific version (e.g., `20240327-a1b2c3d`)
-
-The images support both AMD64 and ARM64 architectures.
 
 ### Using Docker Compose
 
@@ -49,7 +46,6 @@ services:
       - LOG_LEVEL=INFO
     security_opt:
       - seccomp=unconfined
-    # platform: linux/arm64  # Uncomment and specify if needed, image supports both amd64 and arm64
     restart: unless-stopped
 
 volumes:
@@ -73,7 +69,7 @@ git clone https://github.com/amgadabdelhafez/wake-pdi.git
 cd wake-pdi
 ```
 
-2. Build for ARM64 (Raspberry Pi):
+2. Build locally:
 
 ```bash
 docker build -t amgadabdelhafez/publicrepo:latest .
@@ -107,7 +103,7 @@ The container uses three volumes:
 
 The project uses GitHub Actions for continuous integration and delivery:
 
-- Automatically builds Docker images for both AMD64 and ARM64 architectures
+- Automatically builds Docker images for AMD64 architecture
 - Pushes images to Docker Hub
 - Builds and tests pull requests without publishing
 - Uses GitHub Actions cache for faster builds
@@ -125,7 +121,6 @@ Available at `amgadabdelhafez/publicrepo`:
 
 - `latest`: Latest version from main branch
 - `YYYYMMDD-SHA`: Date and commit specific version
-- All images support both AMD64 and ARM64 architectures
 
 ## Contributing
 
