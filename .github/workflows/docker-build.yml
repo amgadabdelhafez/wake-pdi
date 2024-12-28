@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 env:
-  DOCKER_HUB_REPO: amgadabdelhafez/publicrepo
+  DOCKER_HUB_REPO: amgadabdelhafez/wakepdi
 
 jobs:
   build-and-push:

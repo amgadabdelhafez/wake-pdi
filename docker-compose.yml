@@ -1,6 +1,6 @@
 services:
   wakepdi:
-    image: amgadstartup/wake-pdi:linux
+    image: amgadabdelhafez/wakepdi:linux
     container_name: wakepdi
     volumes:
       - wake-data:/app/data
