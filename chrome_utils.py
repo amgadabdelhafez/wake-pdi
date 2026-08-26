@@ -115,12 +115,17 @@ def get_chromedriver() -> str:
         # Handle ARM architecture
         if is_arm():
             
-            # Try installing one for ARM
+            # Try installing one for ARM. webdriver-manager 4.x renamed the
+            # kwarg from version= to driver_version= and auto-detects the
+            # browser build, so plain install() is the primary path.
+            try:
+                return ChromeDriverManager().install()
+            except Exception as e:
+                logger.info(f"Auto-detected ChromeDriver install failed, retrying pinned: {e}")
             try:
                 if chrome_version:
-                    major_version = chrome_version.split('.')[0]
-                    return ChromeDriverManager(version=f"{major_version}.0.0").install()
-                return ChromeDriverManager().install()
+                    return ChromeDriverManager(driver_version=chrome_version).install()
+                raise ChromeError("Chrome version undetectable for pinned install")
             except Exception as e:
                 logger.error(f"Failed to install ChromeDriver for ARM: {e}")
                 raise ChromeError("Could not find or install ChromeDriver for ARM architecture")
@@ -130,12 +135,12 @@ def get_chromedriver() -> str:
             major_version = chrome_version.split('.')[0]
             try:
                 # Try to get the latest driver version compatible with current Chrome
-                return ChromeDriverManager(chrome_type="google-chrome", version="latest").install()
+                return ChromeDriverManager().install()
             except Exception as e:
                 logger.info(f"Could not get latest version, trying fallback: {e}")
                 try:
                     # Fallback to major version
-                    return ChromeDriverManager(version=major_version).install()
+                    return ChromeDriverManager(driver_version=chrome_version).install()
                 except Exception as e:
                     logger.info(f"Could not get major version, trying latest: {e}")
         

@@ -35,3 +35,6 @@ pickle-mixin>=1.0.2
 
 # Compatibility requirements
 blinker<1.8.0
+
+# selenium-wire vendored code imports pkg_resources; setuptools>=81 removed it
+setuptools<81

@@ -14,45 +14,83 @@ logger = setup_logger(__name__)
 def handle_login_error(driver) -> str:
     """Handle and return login error message"""
     try:
+        # legacy container
         error_placeholder = driver.find_element(By.ID, "errorPlaceholder").text
         if error_placeholder:
             return f"Login error: {error_placeholder}"
     except Exception:
         pass
+    try:
+        # 2026 flow renders inline error/alert nodes
+        for el in driver.find_elements(By.CSS_SELECTOR, "[role='alert'], [class*='error']"):
+            text = el.text.strip()
+            if text:
+                return f"Login error: {text}"
+    except Exception:
+        pass
     return "Unknown login error"
 
-def enter_credentials(driver: Any, username: str, password: str) -> bool:
-    """Enter login credentials and submit"""
-    try:
-        # Enter username
-        username_field = WebDriverWait(driver, 30).until(
-            EC.visibility_of_element_located((By.ID, "email"))
-        )
-        username_field.click()
-        username_field.send_keys(username)
-        username_submit_button = driver.find_element(By.ID, "username_submit_button")
-        username_submit_button.click()
+def _first_visible(driver: Any, wait: int, locators) -> Any:
+    """Return the first locator that becomes visible; raise if none do."""
+    last_error = None
+    for by, value in locators:
+        try:
+            return WebDriverWait(driver, wait).until(
+                EC.visibility_of_element_located((by, value))
+            )
+        except Exception as e:
+            last_error = e
+    raise last_error
 
-        # Enter password
-        password_field = WebDriverWait(driver, 30).until(
-            EC.visibility_of_element_located((By.ID, "password"))
-        )
+
+def enter_credentials(driver: Any, username: str, password: str) -> bool:
+    """Enter login credentials and submit.
+
+    2026 flow (signon.servicenow.com/x_snc_sso_auth.do?pageId=login), two steps:
+      step 1: #username then #identify-submit ("Next")
+      step 2: #password then #challenge-authenticator-submit ("Sign in")
+    The submit buttons stay disabled until real input events fire; Selenium
+    send_keys produces real events, so no JS injection is needed.
+    Old pre-2025 ids are kept as fallbacks.
+    """
+    try:
+        # Step 1: identifier
+        username_field = _first_visible(driver, 30, [
+            (By.ID, "username"),          # 2026 flow
+            (By.ID, "email"),             # legacy flow
+        ])
+        username_field.click()
+        username_field.clear()
+        username_field.send_keys(username)
+        next_button = _first_visible(driver, 15, [
+            (By.ID, "identify-submit"),          # 2026 flow
+            (By.ID, "username_submit_button"),   # legacy flow
+        ])
+        WebDriverWait(driver, 15).until(lambda d: next_button.is_enabled())
+        next_button.click()
+
+        # Step 2: password
+        password_field = _first_visible(driver, 30, [
+            (By.ID, "password"),
+        ])
         password_field.click()
         password_field.send_keys(password)
-        password_submit_button = WebDriverWait(driver, 30).until(
-            EC.visibility_of_element_located((By.ID, "password_submit_button"))
-        )
-        password_submit_button.click()
+        signin_button = _first_visible(driver, 15, [
+            (By.ID, "challenge-authenticator-submit"),  # 2026 flow
+            (By.ID, "password_submit_button"),          # legacy flow
+        ])
+        WebDriverWait(driver, 15).until(lambda d: signin_button.is_enabled())
+        signin_button.click()
         return True
     except Exception as e:
         logger.error(f"Error entering credentials: {e}")
         return False
 
 def wait_for_login_completion(driver: Any) -> bool:
-    """Wait for login to complete successfully"""
+    """Wait for login to land anywhere on the developer portal."""
     try:
         WebDriverWait(driver, 60).until(
-            EC.url_to_be("https://developer.servicenow.com/dev.do")
+            EC.url_contains("developer.servicenow.com")
         )
         logger.info("signin success")
         return True

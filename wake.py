@@ -35,8 +35,13 @@ def main():
         login_info = config[account]
         logger.info("Attempting to sign in")        
         session = do_sign_in(login_info)
-        
-        if session.magic_link:            
+
+        if session is None:
+            logger.error(f"Sign in failed for account {account}; skipping")
+            continue
+        if not session.magic_link:
+            logger.warning("No magic link captured; instance info and wake still proceed")
+        if True:            
             try:
                 logger.info("checking user info")
                 user_info = instance.get_user_info(session)
@@ -66,6 +71,8 @@ def main():
             except Exception as e:
                 logger.error(f"Error checking instance info: {e}")
             try:
+                if not session.magic_link:
+                    raise ValueError("no magic link captured")
                 logger.info("checking instance details")
                 instance_details = instance.get_instance_details(session.magic_link)
                 for key, value in instance_details.items():
