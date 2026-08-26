@@ -48,8 +48,9 @@ def wait_for_magic_link(driver: webdriver.Chrome, max_attempts: int = 5) -> Opti
     return None
 
 def create_session_from_cookies(
-    cookies: List[Dict[str, Any]], 
-    magic_link: Optional[bytes] = None
+    cookies: List[Dict[str, Any]],
+    magic_link: Optional[bytes] = None,
+    g_ck: Optional[str] = None
 ) -> requests.Session:
     """
     Create a requests session from cookies and magic link
@@ -77,7 +78,17 @@ def create_session_from_cookies(
         # Add magic link and processed cookies to session
         session.magic_link = magic_link
         session.processed_cookies = session.cookies.get_dict()
-        
+
+        # The developer-portal CSRF/user token (g_ck) is exposed as a JS variable
+        # (window.g_ck), NOT as a cookie. devportal.do rejects action calls with a
+        # 401 when X-UserToken is empty, while the cookie-authenticated
+        # api/snc/v1/dev/* read endpoints still succeed. Inject the captured token
+        # under both keys get_headers reads so provisioning calls authenticate.
+        if g_ck:
+            session.g_ck = g_ck
+            session.processed_cookies['glide_user_token'] = g_ck
+            session.processed_cookies['g_ck'] = g_ck
+
         return session
     except Exception as e:
         raise AuthError(f"Failed to create session from cookies: {e}")

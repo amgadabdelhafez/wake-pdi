@@ -155,6 +155,14 @@ def request_instance(session, family="xanadu"):
             result = response.json()
             if result.get("status") == "SUCCESS" and result.get("req_id"):
                 return result
+            # A 200 with status FAIL carries an actionable reason (e.g. the account
+            # has not signed the legal agreement / completed the lead-tracking form,
+            # which is a one-time manual onboarding step, not a code failure).
+            logger.error(
+                "Instance request refused: "
+                f"{result.get('message', result)} (status={result.get('status')})"
+            )
+            return None
         logger.error(f"Failed to request instance. Status code: {response.status_code}")
         return None
     except Exception as e:

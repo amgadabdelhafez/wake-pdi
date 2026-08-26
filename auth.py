@@ -143,9 +143,22 @@ def do_sign_in(config: Dict[str, str]) -> Optional[Any]:
         else:
             logger.warning("Could not capture magic link after multiple attempts")
 
-        # Get cookies and create session
+        # Get cookies and create session. Also capture the dev-portal user token
+        # (window.g_ck), which is a JS variable rather than a cookie and is required
+        # for devportal.do provisioning calls (they 401 without X-UserToken).
         cookies = driver.get_cookies()
-        return create_session_from_cookies(cookies, magic_link)
+        g_ck = None
+        try:
+            g_ck = driver.execute_script(
+                "return window.g_ck "
+                "|| (window.NOW && window.NOW.g_ck) "
+                "|| (typeof g_ck !== 'undefined' ? g_ck : '') "
+                "|| '';"
+            )
+        except Exception as e:
+            logger.warning(f"Could not capture window.g_ck: {e}")
+        logger.info(f"dev-portal user token captured: {'yes' if g_ck else 'no'} (len {len(g_ck) if g_ck else 0})")
+        return create_session_from_cookies(cookies, magic_link, g_ck)
 
     except Exception as e:
         logger.error(f"Unexpected error during sign in: {e}")
