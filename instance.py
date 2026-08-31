@@ -1,13 +1,13 @@
 import json
 import requests
 import time
-import logging
 import gzip
 import io
 import os
+from logger import setup_logger
 
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
+REQUEST_TIMEOUT_SECONDS = 30
 
 def get_headers(cookies):
     headers = {
@@ -26,7 +26,6 @@ def get_headers(cookies):
         'X-g-ck': cookies.get('g_ck', ''),
         'Cookie': '; '.join([f"{k}={v}" for k, v in cookies.items() if k != 'g_ck']),
     }
-    logger.debug(f"Headers being sent: {json.dumps(headers, indent=2)}")
     return headers
 
 def get_instance_details(magic_link):
@@ -49,38 +48,55 @@ def get_instance_details(magic_link):
     return instance_details
 
 
-def get_instance_info(session):
-    url = "https://developer.servicenow.com/api/snc/v1/dev/instanceInfo?sysparm_data=%7B%22action%22:%22instance.ops.get_instance_info%22,%22data%22:%7B%22direct_wake_up%22:False%7D%7D"
+def get_instance_info(session, direct_wake_up=False):
+    """Return current instance status, optionally requesting a direct Portal wake.
+
+    Callers must make the mutating ``direct_wake_up=True`` path explicit. The
+    daily scheduler always retrieves status first before deciding whether to use
+    this action.
+    """
+    url = "https://developer.servicenow.com/api/snc/v1/dev/instanceInfo"
+    params = {
+        "sysparm_data": json.dumps(
+            {
+                "action": "instance.ops.get_instance_info",
+                "data": {"direct_wake_up": bool(direct_wake_up)},
+            }
+        )
+    }
     headers = get_headers(session.processed_cookies)
-    payload={}
 
     try:
-        logger.debug(f"Sending request to: {url}")
-        response = requests.request("GET", url, headers=headers, data=payload)
+        response = session.get(
+            url,
+            params=params,
+            headers=headers,
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
 
         if response.status_code == 200:
-            instance_info = json.loads(response.text)['result']['instanceInfo']
-            # Ensure data directory exists
-            # os.makedirs('data', exist_ok=True)
-            # save instance info to file for later use
-            # with open('data/instance_info.json', 'w') as f:
-            #     json.dump(instance_info, f, indent=2)
-            return instance_info
+            return response.json().get("result", {}).get("instanceInfo")
 
         else:
-            logger.warning(f"Failed to get instance info. Status code: {response.status_code}")
+            logger.warning("Failed to get instance info (HTTP %s)", response.status_code)
             return None
-    except requests.RequestException as e:
-        logger.error(f"Instance info request failed: {e}")
+    except (requests.RequestException, ValueError) as error:
+        logger.error("Instance-info request failed (%s)", type(error).__name__)
         return None
+
+
+def wake_instance(session):
+    """Send the Portal's explicit direct-wake request for an assigned PDI."""
+    return get_instance_info(session, direct_wake_up=True)
 
 def get_user_info(session):
     url = "https://developer.servicenow.com/api/snc/v1/dev/user_session_info?sysparm_data=%7B%22action%22:%22dev.user.session%22,%22data%22:%7B%22sysparm_okta%22:true%7D%7D"
     headers = get_headers(session.processed_cookies)
 
     try:
-        logger.debug(f"Sending request to: {url}")
-        response = session.get(url, headers=headers)
+        response = session.get(
+            url, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS
+        )
         if response.status_code == 200:
             data = response.json()
             # Ensure data directory exists
@@ -90,10 +106,10 @@ def get_user_info(session):
             #     json.dump(data, f, indent=2)
             return data
         else:
-            logger.warning(f"Failed to get user info. Status code: {response.status_code}")
+            logger.warning("Failed to get user info (HTTP %s)", response.status_code)
             return False, None
-    except requests.RequestException as e:
-        logger.error(f"User info request failed: {e}")
+    except requests.RequestException as error:
+        logger.error("User-info request failed (%s)", type(error).__name__)
         return False, None
 
 def get_available_versions(session):
@@ -108,13 +124,15 @@ def get_available_versions(session):
     headers = get_headers(session.processed_cookies)
     
     try:
-        response = requests.get(url, params=params, headers=headers, verify=False)
+        response = requests.get(
+            url, params=params, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS
+        )
         if response.status_code == 200:
             return response.json()
-        logger.error(f"Failed to get versions. Status code: {response.status_code}")
+        logger.error("Failed to get versions (HTTP %s)", response.status_code)
         return None
-    except Exception as e:
-        logger.error(f"Error getting versions: {e}")
+    except Exception as error:
+        logger.error("Release-version request failed (%s)", type(error).__name__)
         return None
 
 def check_user_in_queue(session):
@@ -129,13 +147,15 @@ def check_user_in_queue(session):
     headers = get_headers(session.processed_cookies)
     
     try:
-        response = requests.get(url, params=params, headers=headers, verify=False)
+        response = requests.get(
+            url, params=params, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS
+        )
         if response.status_code == 200:
             return response.json()
-        logger.error(f"Failed to check queue. Status code: {response.status_code}")
+        logger.error("Failed to check queue (HTTP %s)", response.status_code)
         return None
-    except Exception as e:
-        logger.error(f"Error checking queue: {e}")
+    except Exception as error:
+        logger.error("Queue-status request failed (%s)", type(error).__name__)
         return None
 
 def request_instance(session, family="xanadu"):
@@ -150,7 +170,9 @@ def request_instance(session, family="xanadu"):
     headers = get_headers(session.processed_cookies)
     
     try:
-        response = requests.get(url, params=params, headers=headers, verify=False)
+        response = requests.get(
+            url, params=params, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS
+        )
         if response.status_code == 200:
             result = response.json()
             if result.get("status") == "SUCCESS" and result.get("req_id"):
@@ -158,15 +180,12 @@ def request_instance(session, family="xanadu"):
             # A 200 with status FAIL carries an actionable reason (e.g. the account
             # has not signed the legal agreement / completed the lead-tracking form,
             # which is a one-time manual onboarding step, not a code failure).
-            logger.error(
-                "Instance request refused: "
-                f"{result.get('message', result)} (status={result.get('status')})"
-            )
+            logger.error("Instance request was refused by the Portal (status=%s)", result.get("status"))
             return None
-        logger.error(f"Failed to request instance. Status code: {response.status_code}")
+        logger.error("Failed to request an instance (HTTP %s)", response.status_code)
         return None
-    except Exception as e:
-        logger.error(f"Error requesting instance: {e}")
+    except Exception as error:
+        logger.error("Instance-request call failed (%s)", type(error).__name__)
         return None
 
 def check_request_status(session, req_id):
@@ -181,13 +200,15 @@ def check_request_status(session, req_id):
     headers = get_headers(session.processed_cookies)
     
     try:
-        response = requests.get(url, params=params, headers=headers, verify=False)
+        response = requests.get(
+            url, params=params, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS
+        )
         if response.status_code == 200:
             return response.json()
-        logger.error(f"Failed to check status. Status code: {response.status_code}")
+        logger.error("Failed to check provisioning status (HTTP %s)", response.status_code)
         return None
-    except Exception as e:
-        logger.error(f"Error checking status: {e}")
+    except Exception as error:
+        logger.error("Provisioning-status request failed (%s)", type(error).__name__)
         return None
 
 def request_new_instance(session, family="xanadu", max_retries=30, retry_delay=10):
@@ -247,7 +268,7 @@ def request_new_instance(session, family="xanadu", max_retries=30, retry_delay=1
                 "status": "success"
             }
         elif status in ["error", "failed"]:
-            logger.error(f"Instance request failed: {status_result.get('message')}")
+            logger.error("Instance request was rejected by the Portal")
             return None
             
         logger.info(f"Instance not ready yet, checking again in {retry_delay} seconds...")
@@ -270,9 +291,12 @@ def check_available_endpoints(session):
         url = base_url + endpoint
         headers = get_headers(session.processed_cookies)
         try:
-            logger.debug(f"Sending request to: {url}")
-            response = session.get(url, headers=headers)
-            logger.debug(f"Endpoint {endpoint} status code: {response.status_code}")
-            logger.debug(f"Endpoint {endpoint} response content: {response.text[:200]}...")  # Log first 200 characters
-        except requests.RequestException as e:
-            logger.error(f"Request to {endpoint} failed: {e}")
+            response = session.get(
+                url, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS
+            )
+            logger.debug("Endpoint %s status code: %s", endpoint, response.status_code)
+            logger.debug(
+                "Endpoint %s response received (%d bytes)", endpoint, len(response.content)
+            )
+        except requests.RequestException as error:
+            logger.error("Endpoint %s request failed (%s)", endpoint, type(error).__name__)

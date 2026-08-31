@@ -1,135 +1,83 @@
-# Wake PDI
+# WakePDI
 
-Control your ServiceNow Developer Portal Instances (PDIs) using this Docker-based tool.
+WakePDI checks configured ServiceNow Developer Portal PDIs and can send the
+Portal's explicit direct-wake request for an already assigned PDI. It does not
+provision, reset, release, or otherwise create an instance.
 
-## Features
+## Safety model
 
-- Wake up instances automatically
-- Reset instances to out-of-box settings
-- Release instances back to pool
-- Docker support for easy deployment
+- The image does nothing but print CLI help by default.
+- `--status` authenticates and reports status without requesting a wake.
+- `--wake-up` is an explicit manual action for active assigned PDIs only.
+- `--reconcile --allow-wake` is the scheduler-only path: it reads status first,
+  persists an opaque local schedule record, and wakes only when the configured
+  interval has elapsed.
+- Missing, expired, and `No Instance Assigned` accounts are reported and
+  skipped. The application never calls the Portal's instance-provisioning API.
+- Credentials stay in the encrypted configuration and decryption-key files;
+  neither configuration, cookies, HTTP headers, passwords, nor session tokens
+  are written to application logs.
 
-## Docker Deployment
+The default wake interval is 96 hours. The intended Kubernetes workload runs
+once per day, uses the persisted state to decide whether a wake is due, and
+rechecks every result on the following daily run.
 
-### Using Docker Hub
+The Portal's current interactive sign-in requires a browser session. The
+scheduler image uses Firefox plus a pinned GeckoDriver under the restricted
+pod profile. It does not package Chromium and does not use an unsafe
+`--no-sandbox` fallback. The lightweight HTTP sign-in remains diagnostic-only:
+it detects and rejects guest sessions rather than treating a token as proof of
+an authenticated Portal session.
 
-The project automatically builds and publishes Docker images to Docker Hub. You can pull the image using:
+Firefox treats DOM readiness, not third-party analytics completion, as the
+page-load boundary and applies a 45-second navigation timeout. The scheduler
+then waits explicitly for the Portal's own sign-in controls. This keeps a
+blocked tracking resource from holding a daily reconciliation indefinitely.
 
-```bash
-docker pull amgadabdelhafez/wakepdi:latest
+## Commands
+
+Use a local encrypted account configuration only from a trusted directory.
+The default paths are `data/config.json` and `data/dec_key.bin`; the latter can
+be overridden with `WAKE_PDI_KEY_FILE`.
+
+```sh
+# Read-only Portal status for every configured account.
+python wake.py --status
+
+# Visible browser flow for a human-completed Portal SSO challenge. This permits
+# up to 10 minutes after credential handoff; unattended runs retain a 60-second
+# completion window.
+python wake.py --status --auth-mode browser --not-headless
+
+# Deliberately wake active assigned PDIs now. This is a Portal mutation.
+python wake.py --wake-up
+
+# Scheduler path: persist non-secret timing state, then wake only if due.
+python wake.py --reconcile --allow-wake \
+  --state-file /var/lib/wake-pdi/schedule-state.json \
+  --wake-interval-hours 96
 ```
 
-Available tags:
+`--add-account` and `--remove-account <ACCOUNT>` are local account-management
+commands. They update encrypted local configuration only; they are not
+intended for Kubernetes.
 
-- `latest`: Latest version from the main branch
-- `YYYYMMDD-SHA`: Date and commit specific version (e.g., `20240327-a1b2c3d`)
+## Container
 
-### Using Docker Compose
+The container uses a non-root application user, a default seccomp profile at
+deployment, no added Linux capabilities, a read-only root filesystem, and
+temporary writable locations only for scheduler state, log, and runtime data.
+It uses Firefox WebDriver for the interactive Portal SSO flow and does not
+require an unconfined seccomp profile or an unsafe browser sandbox bypass.
 
-1. Create a docker-compose.yml:
+Build locally:
 
-```yaml
-services:
-  wakepdi:
-    image: amgadabdelhafez/wakepdi:latest
-    container_name: wakepdi
-    volumes:
-      - wake-data:/app/data
-      - wake-config:/app/config
-      - wake-logs:/app/logs
-    environment:
-      - PYTHONUNBUFFERED=1
-      - TZ=UTC
-      - DISPLAY=:99
-      - CHROME_NO_SANDBOX=true
-      - CHROME_HEADLESS=true
-      - LOG_LEVEL=INFO
-    security_opt:
-      - seccomp=unconfined
-    restart: unless-stopped
-
-volumes:
-  wake-data:
-  wake-config:
-  wake-logs:
+```sh
+docker build -t wake-pdi:local .
+docker run --rm wake-pdi:local
 ```
 
-2. Deploy:
-
-```bash
-docker compose up -d
-```
-
-### Building from Source
-
-1. Clone the repository:
-
-```bash
-git clone https://github.com/amgadabdelhafez/wake-pdi.git
-cd wake-pdi
-```
-
-2. Build locally:
-
-```bash
-docker build -t amgadabdelhafez/wakepdi:latest .
-```
-
-## Configuration
-
-Configuration files are stored in the mounted volumes:
-
-- `wake-config`: Configuration files
-- `wake-data`: Runtime data
-- `wake-logs`: Application logs
-
-## Environment Variables
-
-| Variable        | Description                 | Default |
-| --------------- | --------------------------- | ------- |
-| TZ              | Timezone                    | UTC     |
-| LOG_LEVEL       | Logging level               | INFO    |
-| CHROME_HEADLESS | Run Chrome in headless mode | true    |
-
-## Volumes
-
-The container uses three volumes:
-
-- `wake-data`: Persistent data storage
-- `wake-config`: Configuration files
-- `wake-logs`: Application logs
-
-## CI/CD
-
-The project uses GitHub Actions for continuous integration and delivery:
-
-- Automatically builds Docker images for AMD64 architecture
-- Pushes images to Docker Hub
-- Builds and tests pull requests without publishing
-- Uses GitHub Actions cache for faster builds
-- Tags images with date and commit SHA for versioning
-
-The workflow is triggered on:
-
-- Push to main branch
-- Pull requests
-- Manual workflow dispatch
-
-## Docker Tags
-
-Available at `amgadabdelhafez/wakepdi`:
-
-- `latest`: Latest version from main branch
-- `YYYYMMDD-SHA`: Date and commit specific version
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a new Pull Request
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+The Kubernetes delivery contract is maintained separately in
+`/Users/amgad/dev_projects/homelab-k8s-baseline/workloads/wake-pdi`. It mounts
+the encrypted configuration as a read-only Secret and stores only schedule
+timestamps and hashed account identifiers on an explicit NFS PVC.

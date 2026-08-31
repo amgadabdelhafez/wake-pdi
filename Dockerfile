@@ -1,64 +1,59 @@
-# Use standard Python base image
-FROM python:3.8-slim
+FROM python:3.11-slim-bookworm
 
-# Keeps Python from generating .pyc files in the container
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-ENV TZ=UTC
-ENV DISPLAY=:99
-ENV CHROME_NO_SANDBOX=true
-ENV CHROME_HEADLESS=true
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    TZ=UTC \
+    WAKE_PDI_BROWSER=firefox \
+    HOME=/tmp \
+    XDG_CACHE_HOME=/tmp/.cache \
+    XDG_CONFIG_HOME=/tmp/.config
 
-# Install system dependencies including build tools
-RUN apt-get update && apt-get install -y \
-    wget \
-    gnupg \
-    python3-pip \
-    xvfb \
-    libnss3 \
-    libxcb1 \
-    unzip \
-    curl \
-    tzdata \
-    chromium \
-    chromium-driver \
-    gcc \
-    python3-dev \
-    libffi-dev \
-    libssl-dev \
-    pkg-config \
+ARG GECKODRIVER_VERSION=0.37.1
+ARG GECKODRIVER_SHA256=e815130ea95983e162ae91843b48d3a3ce991735635fce83a647afde21e09f7e
+
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends \
+        ca-certificates \
+        curl \
+        firefox-esr \
+        tar \
+        tini \
+    && curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+        "https://github.com/mozilla/geckodriver/releases/download/v${GECKODRIVER_VERSION}/geckodriver-v${GECKODRIVER_VERSION}-linux64.tar.gz" \
+        --output /tmp/geckodriver.tar.gz \
+    && echo "${GECKODRIVER_SHA256}  /tmp/geckodriver.tar.gz" | sha256sum --check --status \
+    && tar --extract --gzip --file /tmp/geckodriver.tar.gz --directory /usr/local/bin geckodriver \
+    && chmod 0755 /usr/local/bin/geckodriver \
+    && rm -f /tmp/geckodriver.tar.gz \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy Python files and requirements
-COPY requirements.txt wake.py auth.py auth_utils.py chrome_utils.py config.py instance.py logger.py utils.py ./
+RUN groupadd --gid 5678 appuser \
+    && useradd --uid 5678 --gid 5678 --create-home --home-dir /app --shell /usr/sbin/nologin appuser \
+    && install --directory --owner=appuser --group=appuser --mode=0750 /app/logs /var/lib/wake-pdi
 
-# Install Python dependencies
-RUN pip install --no-cache-dir wheel setuptools && \
-    pip install --no-cache-dir -r requirements.txt
+COPY requirements-scheduler.txt ./
+RUN pip install --no-cache-dir -r requirements-scheduler.txt
 
-# Create necessary directories with proper permissions
-RUN mkdir -p /app/logs /app/data /app/config \
-    && chmod 777 /app/logs /app/data /app/config
+COPY --chown=appuser:appuser \
+    auth.py \
+    auth_requests.py \
+    auth_utils.py \
+    browser_utils.py \
+    config.py \
+    firefox_utils.py \
+    instance.py \
+    logger.py \
+    scheduler.py \
+    utils.py \
+    wake.py \
+    ./
 
-# Create non-root user
-RUN adduser -u 5678 --disabled-password --gecos "" appuser \
-    && chown -R appuser:appuser /app
+USER 5678:5678
 
-# Create symlinks for chromium
-RUN ln -s /usr/bin/chromium /usr/bin/google-chrome \
-    && ln -s /usr/bin/chromedriver /usr/local/bin/chromedriver
-
-# Switch to non-root user
-USER appuser
-
-# Add healthcheck
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD python -c "\
-    import os, sys; \
-    sys.exit(0 if os.path.exists('/app/logs/wake.log') and \
-    os.access('/app/logs/wake.log', os.W_OK) else 1)"
-
-# Start Xvfb and run the application
-CMD ["sh", "-c", "Xvfb :99 -screen 0 1280x1024x24 > /dev/null 2>&1 & sleep 1 && python wake.py --wake-up"]
+ENTRYPOINT ["/usr/bin/tini", "--"]
+# A bare image is deliberately inert. A scheduled workload must choose
+# --reconcile and explicitly opt into Portal mutation with --allow-wake.
+CMD ["python", "wake.py", "--help"]

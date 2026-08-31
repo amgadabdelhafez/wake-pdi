@@ -1,29 +1,19 @@
 services:
   wakepdi:
-    image: amgadabdelhafez/wakepdi:latest
-    container_name: wakepdi
-    volumes:
-      - wake-data:/app/data
-      - wake-config:/app/config
-      - wake-logs:/app/logs
+    build: .
+    image: wake-pdi:local
+    command: ["python", "wake.py", "--help"]
     environment:
-      - PYTHONUNBUFFERED=1
-      - TZ=UTC
-      - DISPLAY=:99
-      - CHROME_NO_SANDBOX=true
-      - CHROME_HEADLESS=true
-      - LOG_LEVEL=INFO
+      PYTHONUNBUFFERED: "1"
+      TZ: UTC
+      WAKE_PDI_AUTH_MODE: browser
+      WAKE_PDI_BROWSER: firefox
+      HOME: /tmp
+    read_only: true
     security_opt:
-      - seccomp=unconfined
-    # platform: linux/arm64
-    platform: linux/amd64
-    healthcheck:
-      test: ["CMD", "python", "-c", "import os, sys; sys.exit(0 if os.path.exists('/app/logs/wake.log') and os.access('/app/logs/wake.log', os.W_OK) else 1)"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-volumes:
-  wake-data:
-  wake-config:
-  wake-logs:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:uid=5678,gid=5678,mode=1777,size=256m
+      - /app/logs:uid=5678,gid=5678,mode=0750,size=32m

@@ -1,4 +1,3 @@
-from seleniumwire import webdriver
 import requests
 import time
 from typing import Optional, List, Dict, Any
@@ -10,7 +9,7 @@ class AuthError(Exception):
     """Custom exception for authentication-related errors"""
     pass
 
-def wait_for_magic_link(driver: webdriver.Chrome, max_attempts: int = 5) -> Optional[bytes]:
+def wait_for_magic_link(driver: Any, max_attempts: int = 5) -> Optional[bytes]:
     """
     Wait and retry for magic link capture from browser requests
     
@@ -25,10 +24,15 @@ def wait_for_magic_link(driver: webdriver.Chrome, max_attempts: int = 5) -> Opti
         AuthError: If there's an error processing requests
     """
     attempt = 0
+    captured_requests = getattr(driver, "requests", None)
+    if captured_requests is None:
+        # The Firefox scheduler intentionally uses plain Selenium rather than
+        # an intercepting proxy. Magic links are not needed for status/wake.
+        return None
     while attempt < max_attempts:
         try:
             # Check all requests for magic link
-            for request in driver.requests:
+            for request in captured_requests:
                 if not request.path:
                     continue
                     
@@ -41,8 +45,8 @@ def wait_for_magic_link(driver: webdriver.Chrome, max_attempts: int = 5) -> Opti
             if attempt < max_attempts:
                 logger.debug(f"Magic link not found, attempt {attempt}/{max_attempts}")
                 time.sleep(2)  # Wait before next attempt
-        except Exception as e:
-            logger.debug(f"Error in attempt {attempt}: {e}")
+        except Exception as error:
+            logger.debug("Magic-link inspection failed on attempt %d (%s)", attempt, type(error).__name__)
             attempt += 1
     
     return None
@@ -71,7 +75,7 @@ def create_session_from_cookies(
         # Add cookies to session
         for cookie in cookies:
             if not all(k in cookie for k in ('name', 'value', 'domain')):
-                logger.warning(f"Skipping invalid cookie: {cookie}")
+                logger.warning("Skipping an invalid cookie from the browser session")
                 continue
             session.cookies.set(cookie['name'], cookie['value'], domain=cookie['domain'])
         
@@ -90,8 +94,8 @@ def create_session_from_cookies(
             session.processed_cookies['g_ck'] = g_ck
 
         return session
-    except Exception as e:
-        raise AuthError(f"Failed to create session from cookies: {e}")
+    except Exception as error:
+        raise AuthError("Failed to create a session from browser cookies") from error
 
 def validate_session(session: requests.Session) -> bool:
     """

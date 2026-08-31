@@ -214,19 +214,19 @@ def setup_chrome_driver() -> webdriver.Chrome:
         # Basic options
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-extensions")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--disable-background-networking")
         chrome_options.add_argument("--start-maximized")
         chrome_options.add_argument("--window-size=1400,800")
         chrome_options.add_experimental_option("excludeSwitches", ["enable-logging", "enable-automation"])
         chrome_options.add_experimental_option("useAutomationExtension", False)
 
-        # Handle Docker/CI environment or ARM
-        if os.environ.get('CHROME_NO_SANDBOX') or os.environ.get('CI') or is_arm():
-            chrome_options.add_argument("--no-sandbox")
-            chrome_options.add_argument("--disable-gpu")  # Often needed on ARM
+        # Preserve Chrome's sandbox in every environment. A constrained runtime
+        # must provide a compatible browser instead of weakening browser isolation.
         
         # Handle headless mode
         if os.environ.get('CHROME_HEADLESS', '').lower() == 'true':
-            chrome_options.add_argument("--headless")
+            chrome_options.add_argument("--headless=new")
 
         # Selenium Wire specific options
         seleniumwire_options = {

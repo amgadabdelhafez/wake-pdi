@@ -9,7 +9,7 @@ class LogConfig:
     CONSOLE_FORMAT = '%(levelname)s: %(message)s'
     LOG_DIR = 'logs'
     LOG_FILE = 'wake.log'
-    FILE_LEVEL = logging.DEBUG
+    FILE_LEVEL = logging.INFO
     CONSOLE_LEVEL = logging.INFO
 
 def create_log_directory(log_dir: str = LogConfig.LOG_DIR) -> None:
@@ -119,13 +119,13 @@ def setup_logger(
                 console_level, console_format
             ))
 
-        except Exception as e:
+        except Exception as error:
             # Fallback to basic configuration if setup fails
             logging.basicConfig(
                 level=logging.INFO,
                 format=LogConfig.CONSOLE_FORMAT
             )
-            logger.error(f"Failed to setup logger: {e}")
+            logger.error("Failed to set up logger (%s)", type(error).__name__)
             logger.warning("Falling back to basic logging configuration")
 
     return logger
