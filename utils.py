@@ -77,6 +77,16 @@ def get_args():
         ),
     )
     parser.add_argument(
+        "--mfa-totp",
+        dest="mfa_totp",
+        action="store_true",
+        help=(
+            "obtain one code from the local mfa-vault-code helper and submit it "
+            "to a recognized visible ServiceNow or Google one-time-code field "
+            "during session capture"
+        ),
+    )
+    parser.add_argument(
         "--allow-wake",
         action="store_true",
         help="permit --reconcile to send a due wake request",
@@ -142,11 +152,15 @@ def get_args():
     if args["capture_sessions"] and args["auth_mode"] != "browser":
         parser.error("--capture-sessions requires --auth-mode browser")
     if args["capture_sessions"] and not args["not_headless"]:
-        parser.error("--capture-sessions requires --not-headless for manual MFA")
+        parser.error("--capture-sessions requires --not-headless for interactive MFA")
     if args["capture_sessions_stdout"] and not args["capture_sessions"]:
         parser.error("--capture-sessions-stdout requires --capture-sessions")
     if args["mfa_code_prompt"] and not args["capture_sessions"]:
         parser.error("--mfa-code-prompt requires --capture-sessions")
+    if args["mfa_totp"] and not args["capture_sessions"]:
+        parser.error("--mfa-totp requires --capture-sessions")
+    if args["mfa_code_prompt"] and args["mfa_totp"]:
+        parser.error("--mfa-code-prompt and --mfa-totp cannot be used together")
     if args["capture_sessions_stdout"] and args["session_file"]:
         parser.error("--capture-sessions-stdout cannot be used with --session-file")
     if args["capture_sessions"] and not args["capture_sessions_stdout"] and not args["session_file"]:

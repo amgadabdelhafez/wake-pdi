@@ -115,6 +115,94 @@ class BrowserAuthenticationTests(unittest.TestCase):
             ],
         )
 
+    def test_local_totp_code_runs_the_local_helper_without_a_shell(self):
+        completed = Mock(stdout="123456\n")
+
+        with (
+            patch.object(auth.shutil, "which", return_value="/trusted/mfa-vault-code") as which,
+            patch.object(auth.subprocess, "run", return_value=completed) as run,
+        ):
+            code = auth.local_totp_code_for_account("user@example.invalid")
+
+        self.assertEqual(code, "123456")
+        which.assert_called_once_with(auth.MFA_TOTP_COMMAND)
+        run.assert_called_once_with(
+            ["/trusted/mfa-vault-code", "servicenow/user@example.invalid"],
+            check=True,
+            stdout=auth.subprocess.PIPE,
+            stderr=auth.subprocess.DEVNULL,
+            text=True,
+            timeout=auth.MFA_TOTP_COMMAND_TIMEOUT_SECONDS,
+        )
+
+    def test_local_totp_code_rejects_invalid_helper_output(self):
+        with self.assertLogs(auth.logger, "ERROR") as logs:
+            with (
+                patch.object(auth.shutil, "which", return_value="/trusted/mfa-vault-code"),
+                patch.object(auth.subprocess, "run", return_value=Mock(stdout="invalid-output\n")),
+            ):
+                self.assertIsNone(auth.local_totp_code_for_account("user@example.invalid"))
+
+        self.assertNotIn("invalid-output", "\n".join(logs.output))
+
+    def test_local_totp_code_fails_closed_when_the_helper_is_missing(self):
+        with patch.object(auth.shutil, "which", return_value=None), patch.object(
+            auth.subprocess, "run"
+        ) as run:
+            self.assertIsNone(auth.local_totp_code_for_account("user@example.invalid"))
+
+        run.assert_not_called()
+
+    def test_local_totp_code_fails_closed_when_the_helper_times_out(self):
+        with (
+            patch.object(auth.shutil, "which", return_value="/trusted/mfa-vault-code"),
+            patch.object(
+                auth.subprocess,
+                "run",
+                side_effect=auth.subprocess.TimeoutExpired("mfa-vault-code", 10),
+            ),
+        ):
+            self.assertIsNone(auth.local_totp_code_for_account("user@example.invalid"))
+
+    def test_local_totp_code_rejects_an_unexpected_configured_identity(self):
+        with patch.object(auth.shutil, "which") as which:
+            self.assertIsNone(auth.local_totp_code_for_account("not-an-email"))
+
+        which.assert_not_called()
+
+    def test_totp_provider_submits_once_then_requires_portal_return(self):
+        driver = Mock(current_url="https://accounts.google.com/signin/v2/challenge/totp")
+        code_field = Mock()
+        provider = Mock(return_value="123456")
+
+        with (
+            patch.dict(os.environ, {"CHROME_HEADLESS": "true"}, clear=False),
+            patch.object(auth, "WebDriverWait") as wait,
+            patch.object(auth, "_mfa_code_field", return_value=code_field),
+        ):
+            wait.return_value.until.side_effect = ["mfa_code", "developer_portal"]
+
+            self.assertTrue(auth.wait_for_login_completion(driver, mfa_code_provider=provider))
+
+        provider.assert_called_once_with()
+        code_field.send_keys.assert_has_calls([call("123456"), call(auth.Keys.RETURN)])
+
+    def test_login_completion_refuses_multiple_local_mfa_code_sources(self):
+        driver = Mock()
+        provider = Mock()
+
+        with patch.object(auth, "WebDriverWait") as wait:
+            self.assertFalse(
+                auth.wait_for_login_completion(
+                    driver,
+                    mfa_code_prompt=True,
+                    mfa_code_provider=provider,
+                )
+            )
+
+        wait.assert_not_called()
+        provider.assert_not_called()
+
     def test_mfa_code_field_refuses_unrecognized_identity_hosts(self):
         driver = Mock(current_url="https://untrusted.example.invalid/challenge")
 
@@ -171,6 +259,34 @@ class BrowserAuthenticationTests(unittest.TestCase):
         create_session.assert_not_called()
         driver.quit.assert_called_once_with()
         sleep.assert_called_once_with(auth.PORTAL_LOGIN_TRANSITION_SECONDS)
+
+    def test_do_sign_in_defers_totp_generation_to_login_completion(self):
+        driver = Mock()
+        account = {"sn_dev_username": "user@example.invalid", "sn_dev_password": "ciphertext"}
+
+        with (
+            patch.object(auth, "Fernet", FakeFernet),
+            patch.object(auth, "get_key", return_value=b"test-key"),
+            patch.object(auth, "setup_browser_driver", return_value=driver),
+            patch.object(auth, "enter_credentials", return_value=True),
+            patch.object(auth, "wait_for_login_completion", return_value=False) as wait,
+            patch.object(auth, "handle_login_error", return_value="The Portal reported a sign-in error"),
+            patch.object(auth.time, "sleep"),
+        ):
+            self.assertIsNone(auth.do_sign_in(account, mfa_totp=True))
+
+        self.assertFalse(wait.call_args.kwargs["mfa_code_prompt"])
+        self.assertIsNotNone(wait.call_args.kwargs["mfa_code_provider"])
+
+    def test_do_sign_in_refuses_multiple_local_mfa_code_sources_before_decryption(self):
+        account = {"sn_dev_username": "user@example.invalid", "sn_dev_password": "ciphertext"}
+
+        with patch.object(auth, "Fernet") as fernet:
+            self.assertIsNone(
+                auth.do_sign_in(account, mfa_code_prompt=True, mfa_totp=True)
+            )
+
+        fernet.assert_not_called()
 
 
 if __name__ == "__main__":

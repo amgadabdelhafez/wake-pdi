@@ -154,6 +154,31 @@ class DurableSessionStoreTests(unittest.TestCase):
                 {"PDI_2"},
             )
 
+    def test_capture_passes_the_totp_mode_to_each_browser_sign_in(self):
+        session = self._session()
+        args = {
+            "capture_sessions_stdout": True,
+            "mfa_totp": True,
+            "session_max_age_hours": 120,
+        }
+        sign_in = Mock(return_value=session)
+        output = SimpleNamespace(buffer=io.BytesIO())
+
+        with patch("session_store.get_key", return_value=self.key), patch.object(
+            wake.sys, "stdout", output
+        ):
+            result = wake._capture_durable_sessions(
+                {"PDI_2": {"sn_dev_username": "one@example.invalid"}},
+                args,
+                sign_in,
+                Mock(return_value={"instanceStatus": {"state": "active"}}),
+            )
+
+        self.assertEqual(result, 0)
+        sign_in.assert_called_once_with(
+            {"sn_dev_username": "one@example.invalid"}, mfa_totp=True
+        )
+
     def test_capture_cli_requires_a_visible_browser_and_explicit_store_path(self):
         with patch.object(
             sys,
@@ -191,6 +216,21 @@ class DurableSessionStoreTests(unittest.TestCase):
 
         self.assertTrue(args["mfa_code_prompt"])
 
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "wake.py",
+                "--capture-sessions",
+                "--capture-sessions-stdout",
+                "--mfa-totp",
+                "--not-headless",
+            ],
+        ):
+            args = utils.get_args()
+
+        self.assertTrue(args["mfa_totp"])
+
         with patch.object(sys, "argv", ["wake.py", "--capture-sessions", "--session-file", "/trusted/store"]):
             with self.assertRaises(SystemExit):
                 utils.get_args()
@@ -211,6 +251,25 @@ class DurableSessionStoreTests(unittest.TestCase):
                 utils.get_args()
 
         with patch.object(sys, "argv", ["wake.py", "--status", "--mfa-code-prompt"]):
+            with self.assertRaises(SystemExit):
+                utils.get_args()
+
+        with patch.object(sys, "argv", ["wake.py", "--status", "--mfa-totp"]):
+            with self.assertRaises(SystemExit):
+                utils.get_args()
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "wake.py",
+                "--capture-sessions",
+                "--capture-sessions-stdout",
+                "--mfa-code-prompt",
+                "--mfa-totp",
+                "--not-headless",
+            ],
+        ):
             with self.assertRaises(SystemExit):
                 utils.get_args()
 

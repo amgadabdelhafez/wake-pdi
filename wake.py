@@ -52,11 +52,12 @@ def _capture_durable_sessions(config, args, do_sign_in, get_instance_info) -> in
     failed_accounts = 0
     for account_number, (account, login_info) in enumerate(config.items(), start=1):
         logger.info("Capturing durable Portal session for configured account %d", account_number)
-        session = (
-            do_sign_in(login_info, mfa_code_prompt=True)
-            if args.get("mfa_code_prompt")
-            else do_sign_in(login_info)
-        )
+        sign_in_options = {}
+        if args.get("mfa_code_prompt"):
+            sign_in_options["mfa_code_prompt"] = True
+        if args.get("mfa_totp"):
+            sign_in_options["mfa_totp"] = True
+        session = do_sign_in(login_info, **sign_in_options)
         if session is None:
             logger.error("Account %d could not authenticate; session store was not updated", account_number)
             failed_accounts += 1

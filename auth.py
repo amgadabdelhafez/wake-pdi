@@ -10,8 +10,10 @@ from logger import setup_logger
 import getpass
 import os
 import re
+import shutil
+import subprocess
 import time
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Callable
 from urllib.parse import urlparse
 
 logger = setup_logger(__name__)
@@ -31,6 +33,9 @@ MFA_CODE_LOCATORS = (
     (By.CSS_SELECTOR, 'input[autocomplete="one-time-code"]'),
 )
 MFA_CODE_PATTERN = re.compile(r"^[0-9]{4,12}$")
+MFA_TOTP_ACCOUNT_PATTERN = re.compile(r"^[^/\s@]+@[^/\s@]+$")
+MFA_TOTP_COMMAND = "mfa-vault-code"
+MFA_TOTP_COMMAND_TIMEOUT_SECONDS = 10
 
 
 def _safe_browser_location(driver: Any) -> str:
@@ -129,6 +134,42 @@ def prompt_for_mfa_code() -> str | None:
         return None
     if not MFA_CODE_PATTERN.fullmatch(code):
         logger.error("MFA code was rejected locally; expected 4 to 12 digits")
+        return None
+    return code
+
+
+def local_totp_code_for_account(username: str) -> str | None:
+    """Return one local vault-generated code for a configured email account.
+
+    The helper is invoked only after a recognized visible MFA field appears.
+    Its stdout is held only long enough to validate and submit one numeric code;
+    neither the code nor the derived vault path is logged.
+    """
+    if not isinstance(username, str) or not MFA_TOTP_ACCOUNT_PATTERN.fullmatch(username):
+        logger.error("Configured account cannot select a local MFA TOTP entry")
+        return None
+
+    executable = shutil.which(MFA_TOTP_COMMAND)
+    if executable is None:
+        logger.error("Local MFA TOTP helper is unavailable")
+        return None
+
+    try:
+        result = subprocess.run(
+            [executable, f"servicenow/{username}"],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=MFA_TOTP_COMMAND_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        logger.error("Local MFA TOTP code retrieval failed (%s)", type(error).__name__)
+        return None
+
+    code = result.stdout.strip()
+    if not MFA_CODE_PATTERN.fullmatch(code):
+        logger.error("Local MFA TOTP helper returned an invalid code")
         return None
     return code
 
@@ -255,11 +296,21 @@ def _login_completion_timeout_seconds() -> int:
     return DEFAULT_LOGIN_COMPLETION_TIMEOUT_SECONDS
 
 
-def wait_for_login_completion(driver: Any, *, mfa_code_prompt: bool = False) -> bool:
+def wait_for_login_completion(
+    driver: Any,
+    *,
+    mfa_code_prompt: bool = False,
+    mfa_code_provider: Callable[[], str | None] | None = None,
+) -> bool:
     """Wait for Portal return and optionally enter one local MFA code on a known form."""
+    if mfa_code_prompt and mfa_code_provider is not None:
+        logger.error("Only one local MFA-code source may be configured")
+        return False
+
+    code_provider = prompt_for_mfa_code if mfa_code_prompt else mfa_code_provider
     timeout_seconds = _login_completion_timeout_seconds()
     try:
-        state_condition = _login_or_mfa_state if mfa_code_prompt else _login_return_state
+        state_condition = _login_or_mfa_state if code_provider is not None else _login_return_state
         state = WebDriverWait(driver, timeout_seconds).until(state_condition)
         if state == "developer_portal":
             logger.info("signin success")
@@ -276,8 +327,8 @@ def wait_for_login_completion(driver: Any, *, mfa_code_prompt: bool = False) -> 
             logger.info("signin success after Portal continuation")
             return True
 
-        if state == "mfa_code" and mfa_code_prompt:
-            code = prompt_for_mfa_code()
+        if state == "mfa_code" and code_provider is not None:
+            code = code_provider()
             if code is None or not _enter_mfa_code(driver, code):
                 return False
             state = WebDriverWait(driver, MFA_CODE_COMPLETION_TIMEOUT_SECONDS).until(
@@ -309,7 +360,9 @@ def wait_for_login_completion(driver: Any, *, mfa_code_prompt: bool = False) -> 
         )
         return False
 
-def do_sign_in(config: Dict[str, str], *, mfa_code_prompt: bool = False) -> Optional[Any]:
+def do_sign_in(
+    config: Dict[str, str], *, mfa_code_prompt: bool = False, mfa_totp: bool = False
+) -> Optional[Any]:
     """
     Handle ServiceNow Developer Portal sign-in process
     
@@ -319,6 +372,10 @@ def do_sign_in(config: Dict[str, str], *, mfa_code_prompt: bool = False) -> Opti
     Returns:
         Optional[Session]: Authenticated session if successful, None otherwise
     """
+    if mfa_code_prompt and mfa_totp:
+        logger.error("Only one local MFA-code source may be configured")
+        return None
+
     # Decrypt credentials
     sn_dev_username = config["sn_dev_username"]
     encpwdbyt = bytes(config['sn_dev_password'].replace("b'", "").replace("'", ""), 'utf-8')
@@ -344,7 +401,14 @@ def do_sign_in(config: Dict[str, str], *, mfa_code_prompt: bool = False) -> Opti
         if not enter_credentials(driver, sn_dev_username, sn_dev_password):
             return None
 
-        if not wait_for_login_completion(driver, mfa_code_prompt=mfa_code_prompt):
+        mfa_code_provider = (
+            (lambda: local_totp_code_for_account(sn_dev_username)) if mfa_totp else None
+        )
+        if not wait_for_login_completion(
+            driver,
+            mfa_code_prompt=mfa_code_prompt,
+            mfa_code_provider=mfa_code_provider,
+        ):
             logger.error(handle_login_error(driver))
             return None
 
