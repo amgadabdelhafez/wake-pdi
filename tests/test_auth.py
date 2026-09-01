@@ -1,6 +1,7 @@
 import os
+from pathlib import Path
 import unittest
-from unittest.mock import Mock, call, patch
+from unittest.mock import MagicMock, Mock, call, patch
 
 import auth
 
@@ -117,10 +118,16 @@ class BrowserAuthenticationTests(unittest.TestCase):
 
     def test_local_totp_code_runs_the_local_helper_without_a_shell(self):
         completed = Mock(stdout="123456\n")
+        passphrase_file = MagicMock()
+        passphrase_file.__enter__.return_value = Path("/trusted/passphrase")
 
         with (
             patch.object(auth.shutil, "which", return_value="/trusted/mfa-vault-code") as which,
             patch.object(auth.subprocess, "run", return_value=completed) as run,
+            patch.object(auth, "load_mfa_vault_passphrase", return_value=b"local-passphrase"),
+            patch.object(
+                auth, "temporary_mfa_vault_passphrase_file", return_value=passphrase_file
+            ),
         ):
             code = auth.local_totp_code_for_account("user@example.invalid")
 
@@ -133,13 +140,35 @@ class BrowserAuthenticationTests(unittest.TestCase):
             stderr=auth.subprocess.DEVNULL,
             text=True,
             timeout=auth.MFA_TOTP_COMMAND_TIMEOUT_SECONDS,
+            env={**os.environ, "MFA_VAULT_PASSPHRASE_FILE": "/trusted/passphrase"},
         )
 
+    def test_local_totp_code_fails_closed_when_the_encrypted_passphrase_is_unavailable(self):
+        with (
+            patch.object(auth.shutil, "which") as which,
+            patch.object(
+                auth,
+                "load_mfa_vault_passphrase",
+                side_effect=auth.MfaVaultPassphraseError("unavailable"),
+            ),
+        ):
+            self.assertIsNone(auth.local_totp_code_for_account("user@example.invalid"))
+
+        which.assert_called_once_with(auth.MFA_TOTP_COMMAND)
+
     def test_local_totp_code_rejects_invalid_helper_output(self):
+        passphrase_file = MagicMock()
+        passphrase_file.__enter__.return_value = Path("/trusted/passphrase")
         with self.assertLogs(auth.logger, "ERROR") as logs:
             with (
                 patch.object(auth.shutil, "which", return_value="/trusted/mfa-vault-code"),
                 patch.object(auth.subprocess, "run", return_value=Mock(stdout="invalid-output\n")),
+                patch.object(auth, "load_mfa_vault_passphrase", return_value=b"local-passphrase"),
+                patch.object(
+                    auth,
+                    "temporary_mfa_vault_passphrase_file",
+                    return_value=passphrase_file,
+                ),
             ):
                 self.assertIsNone(auth.local_totp_code_for_account("user@example.invalid"))
 
@@ -154,12 +183,20 @@ class BrowserAuthenticationTests(unittest.TestCase):
         run.assert_not_called()
 
     def test_local_totp_code_fails_closed_when_the_helper_times_out(self):
+        passphrase_file = MagicMock()
+        passphrase_file.__enter__.return_value = Path("/trusted/passphrase")
         with (
             patch.object(auth.shutil, "which", return_value="/trusted/mfa-vault-code"),
             patch.object(
                 auth.subprocess,
                 "run",
                 side_effect=auth.subprocess.TimeoutExpired("mfa-vault-code", 10),
+            ),
+            patch.object(auth, "load_mfa_vault_passphrase", return_value=b"local-passphrase"),
+            patch.object(
+                auth,
+                "temporary_mfa_vault_passphrase_file",
+                return_value=passphrase_file,
             ),
         ):
             self.assertIsNone(auth.local_totp_code_for_account("user@example.invalid"))

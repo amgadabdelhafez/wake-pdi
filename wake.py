@@ -146,6 +146,17 @@ def main() -> int:
     if args["not_headless"]:
         os.environ["CHROME_HEADLESS"] = "false"
 
+    if args["import_mfa_vault_passphrase"]:
+        try:
+            from mfa_vault import MfaVaultPassphraseError, import_mfa_vault_passphrase
+
+            import_mfa_vault_passphrase(args["import_mfa_vault_passphrase"])
+        except (ImportError, MfaVaultPassphraseError) as error:
+            logger.error("Local MFA vault passphrase import failed: %s", error)
+            return 2
+        logger.info("Local MFA vault passphrase imported into encrypted storage")
+        return 0
+
     try:
         from config import ConfigurationError, get_config
     except ImportError as error:

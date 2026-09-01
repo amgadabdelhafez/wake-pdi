@@ -58,6 +58,15 @@ def get_args():
             "an encrypted durable-session store"
         ),
     )
+    action.add_argument(
+        "--import-mfa-vault-passphrase",
+        dest="import_mfa_vault_passphrase",
+        metavar="PLAINTEXT_FILE",
+        help=(
+            "encrypt one local MFA-vault passphrase file into WakePDI's local-only "
+            "store; never use this in Kubernetes"
+        ),
+    )
     parser.add_argument(
         "--capture-sessions-stdout",
         dest="capture_sessions_stdout",

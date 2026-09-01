@@ -58,6 +58,15 @@ local visible-browser capture flow, never in K3s. WakePDI validates Portal
 status before including an account in the new store. If any account fails, it
 emits no session data and preserves any prior store.
 
+When `mfa-vault-code` needs a local vault passphrase, import it once into the
+separate local-only WakePDI Fernet store. The passphrase store is never emitted
+to stdout, included in the Portal session store, copied into a Kubernetes
+Secret, or used by unattended K3s jobs. At TOTP time WakePDI decrypts it only
+to a short-lived owner-only file passed to the helper by path, then removes that
+temporary file. Keep the plaintext import source owner-readable only and remove
+it manually after confirming the encrypted import if that is appropriate for
+your local recovery process.
+
 Each stored session has a maximum 120-hour lifetime by default: the 96-hour
 wake cadence plus one daily reconciliation opportunity. An earlier cookie
 expiry wins. This is a local renewal bound, not a claim about ServiceNow's
@@ -86,6 +95,10 @@ python wake.py --status
 # up to 10 minutes after credential handoff; unattended runs retain a 60-second
 # completion window.
 python wake.py --status --auth-mode browser --not-headless
+
+# Import a local MFA-vault passphrase from an owner-only plaintext file. This
+# creates data/mfa_vault_passphrase.enc locally; do not mount or apply it to K3s.
+python wake.py --import-mfa-vault-passphrase /path/to/local-mfa-vault-passphrase
 
 # Capture renewed durable sessions through visible MFA using the local TOTP
 # helper and stream the encrypted result directly to the trusted Kubernetes

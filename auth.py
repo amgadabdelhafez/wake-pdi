@@ -7,6 +7,11 @@ from config import get_key
 from browser_utils import setup_browser_driver
 from auth_utils import wait_for_magic_link, create_session_from_cookies
 from logger import setup_logger
+from mfa_vault import (
+    MfaVaultPassphraseError,
+    load_mfa_vault_passphrase,
+    temporary_mfa_vault_passphrase_file,
+)
 import getpass
 import os
 import re
@@ -205,15 +210,20 @@ def local_totp_code_for_account(username: str) -> str | None:
         return None
 
     try:
-        result = subprocess.run(
-            [executable, f"servicenow/{username}"],
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            timeout=MFA_TOTP_COMMAND_TIMEOUT_SECONDS,
-        )
-    except (OSError, subprocess.SubprocessError) as error:
+        passphrase = load_mfa_vault_passphrase()
+        with temporary_mfa_vault_passphrase_file(passphrase) as passphrase_file:
+            environment = os.environ.copy()
+            environment["MFA_VAULT_PASSPHRASE_FILE"] = str(passphrase_file)
+            result = subprocess.run(
+                [executable, f"servicenow/{username}"],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=MFA_TOTP_COMMAND_TIMEOUT_SECONDS,
+                env=environment,
+            )
+    except (MfaVaultPassphraseError, OSError, subprocess.SubprocessError) as error:
         logger.error("Local MFA TOTP code retrieval failed (%s)", type(error).__name__)
         return None
 
