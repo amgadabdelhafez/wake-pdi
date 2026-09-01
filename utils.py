@@ -68,6 +68,15 @@ def get_args():
         ),
     )
     parser.add_argument(
+        "--mfa-code-prompt",
+        dest="mfa_code_prompt",
+        action="store_true",
+        help=(
+            "prompt once in the local terminal and submit the code to a recognized "
+            "visible ServiceNow or Google one-time-code field during session capture"
+        ),
+    )
+    parser.add_argument(
         "--allow-wake",
         action="store_true",
         help="permit --reconcile to send a due wake request",
@@ -136,6 +145,8 @@ def get_args():
         parser.error("--capture-sessions requires --not-headless for manual MFA")
     if args["capture_sessions_stdout"] and not args["capture_sessions"]:
         parser.error("--capture-sessions-stdout requires --capture-sessions")
+    if args["mfa_code_prompt"] and not args["capture_sessions"]:
+        parser.error("--mfa-code-prompt requires --capture-sessions")
     if args["capture_sessions_stdout"] and args["session_file"]:
         parser.error("--capture-sessions-stdout cannot be used with --session-file")
     if args["capture_sessions"] and not args["capture_sessions_stdout"] and not args["session_file"]:

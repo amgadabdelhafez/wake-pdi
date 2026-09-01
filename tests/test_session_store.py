@@ -126,7 +126,12 @@ class DurableSessionStoreTests(unittest.TestCase):
     def test_capture_stdout_encrypts_the_complete_store_without_a_local_write(self):
         session = self._session()
         output = SimpleNamespace(buffer=io.BytesIO())
-        args = {"capture_sessions_stdout": True, "session_max_age_hours": 120}
+        args = {
+            "capture_sessions_stdout": True,
+            "mfa_code_prompt": True,
+            "session_max_age_hours": 120,
+        }
+        sign_in = Mock(return_value=session)
 
         with patch("session_store.get_key", return_value=self.key), patch(
             "session_store.write_session_store"
@@ -134,12 +139,15 @@ class DurableSessionStoreTests(unittest.TestCase):
             result = wake._capture_durable_sessions(
                 {"PDI_2": {"sn_dev_username": "one@example.invalid"}},
                 args,
-                Mock(return_value=session),
+                sign_in,
                 Mock(return_value={"instanceStatus": {"state": "active"}}),
             )
 
         self.assertEqual(result, 0)
         write_store.assert_not_called()
+        sign_in.assert_called_once_with(
+            {"sn_dev_username": "one@example.invalid"}, mfa_code_prompt=True
+        )
         with patch.object(session_store, "get_key", return_value=self.key):
             self.assertEqual(
                 set(session_store._decode_store(output.buffer.getvalue())["accounts"]),
@@ -168,6 +176,21 @@ class DurableSessionStoreTests(unittest.TestCase):
         self.assertTrue(args["capture_sessions_stdout"])
         self.assertIsNone(args["session_file"])
 
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "wake.py",
+                "--capture-sessions",
+                "--capture-sessions-stdout",
+                "--mfa-code-prompt",
+                "--not-headless",
+            ],
+        ):
+            args = utils.get_args()
+
+        self.assertTrue(args["mfa_code_prompt"])
+
         with patch.object(sys, "argv", ["wake.py", "--capture-sessions", "--session-file", "/trusted/store"]):
             with self.assertRaises(SystemExit):
                 utils.get_args()
@@ -184,6 +207,10 @@ class DurableSessionStoreTests(unittest.TestCase):
                 "/trusted/store",
             ],
         ):
+            with self.assertRaises(SystemExit):
+                utils.get_args()
+
+        with patch.object(sys, "argv", ["wake.py", "--status", "--mfa-code-prompt"]):
             with self.assertRaises(SystemExit):
                 utils.get_args()
 

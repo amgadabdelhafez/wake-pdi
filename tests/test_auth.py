@@ -67,6 +67,69 @@ class BrowserAuthenticationTests(unittest.TestCase):
             ],
         )
 
+    def test_mfa_code_prompt_submits_once_then_requires_portal_return(self):
+        driver = Mock(current_url="https://accounts.google.com/signin/v2/challenge/totp")
+        code_field = Mock()
+
+        with (
+            patch.dict(os.environ, {"CHROME_HEADLESS": "true"}, clear=False),
+            patch.object(auth, "WebDriverWait") as wait,
+            patch.object(auth, "_mfa_code_field", return_value=code_field),
+            patch.object(auth, "prompt_for_mfa_code", return_value="123456") as prompt,
+        ):
+            wait.return_value.until.side_effect = ["mfa_code", "developer_portal"]
+
+            self.assertTrue(auth.wait_for_login_completion(driver, mfa_code_prompt=True))
+
+        prompt.assert_called_once_with()
+        code_field.send_keys.assert_has_calls([call("123456"), call(auth.Keys.RETURN)])
+        self.assertEqual(
+            wait.call_args_list,
+            [
+                call(driver, auth.DEFAULT_LOGIN_COMPLETION_TIMEOUT_SECONDS),
+                call(driver, auth.MFA_CODE_COMPLETION_TIMEOUT_SECONDS),
+            ],
+        )
+
+    def test_mfa_code_prompt_repairs_the_known_post_auth_sso_landing(self):
+        driver = Mock(current_url="https://accounts.google.com/signin/v2/challenge/totp")
+        code_field = Mock()
+
+        with (
+            patch.dict(os.environ, {"CHROME_HEADLESS": "true"}, clear=False),
+            patch.object(auth, "WebDriverWait") as wait,
+            patch.object(auth, "_mfa_code_field", return_value=code_field),
+            patch.object(auth, "prompt_for_mfa_code", return_value="123456"),
+        ):
+            wait.return_value.until.side_effect = ["mfa_code", "post_auth_sso", True]
+
+            self.assertTrue(auth.wait_for_login_completion(driver, mfa_code_prompt=True))
+
+        driver.get.assert_called_once_with(auth.DEVELOPER_PORTAL_URL)
+        self.assertEqual(
+            wait.call_args_list,
+            [
+                call(driver, auth.DEFAULT_LOGIN_COMPLETION_TIMEOUT_SECONDS),
+                call(driver, auth.MFA_CODE_COMPLETION_TIMEOUT_SECONDS),
+                call(driver, auth.POST_AUTH_PORTAL_CONTINUATION_TIMEOUT_SECONDS),
+            ],
+        )
+
+    def test_mfa_code_field_refuses_unrecognized_identity_hosts(self):
+        driver = Mock(current_url="https://untrusted.example.invalid/challenge")
+
+        self.assertIsNone(auth._mfa_code_field(driver))
+        driver.find_elements.assert_not_called()
+
+    def test_malformed_mfa_code_is_not_entered_or_logged(self):
+        driver = Mock(current_url="https://accounts.google.com/signin/v2/challenge/totp")
+        code_field = Mock()
+
+        with patch.object(auth, "_mfa_code_field", return_value=code_field):
+            self.assertFalse(auth._enter_mfa_code(driver, "not-a-code"))
+
+        code_field.send_keys.assert_not_called()
+
     def test_browser_location_diagnostic_removes_query_values(self):
         driver = Mock(current_url="https://login.example.invalid/sign-in?token=do-not-log")
 

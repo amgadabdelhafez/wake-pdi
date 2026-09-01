@@ -44,9 +44,13 @@ Developer Portal token needed by the status and direct-wake API. It is not a
 browser profile and does not contain browser cache, history, or saved form
 data.
 
-Capture requires visible browser MFA for **every configured account**. WakePDI
-validates Portal status before including an account in the new store. If any
-account fails, it emits no session data and preserves any prior store.
+Capture requires visible browser MFA for **every configured account**. The
+optional `--mfa-code-prompt` mode reads one numeric code from the local terminal
+without echoing it, then submits it only to a recognized visible one-time-code
+field on the ServiceNow or Google identity host. It does not read email, retain
+the code, or operate in K3s. WakePDI validates Portal status before including
+an account in the new store. If any account fails, it emits no session data and
+preserves any prior store.
 
 Each stored session has a maximum 120-hour lifetime by default: the 96-hour
 wake cadence plus one daily reconciliation opportunity. An earlier cookie
@@ -80,7 +84,7 @@ python wake.py --status --auth-mode browser --not-headless
 # Capture renewed durable sessions through visible MFA and stream the encrypted
 # result directly to the trusted Kubernetes Secret applier. Do not run this
 # command without the pipe, as stdout carries encrypted session material.
-python wake.py --capture-sessions --capture-sessions-stdout --auth-mode browser --not-headless \
+python wake.py --capture-sessions --capture-sessions-stdout --mfa-code-prompt --auth-mode browser --not-headless \
   | /Users/amgad/dev_projects/homelab-k8s-baseline/workloads/wake-pdi/apply-session-store.sh
 
 # Deliberately wake active assigned PDIs now. This is a Portal mutation.

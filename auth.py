@@ -1,4 +1,5 @@
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from cryptography.fernet import Fernet
@@ -6,7 +7,9 @@ from config import get_key
 from browser_utils import setup_browser_driver
 from auth_utils import wait_for_magic_link, create_session_from_cookies
 from logger import setup_logger
+import getpass
 import os
+import re
 import time
 from typing import Optional, Dict, Any
 from urllib.parse import urlparse
@@ -16,8 +19,18 @@ PORTAL_LOGIN_TRANSITION_SECONDS = 10
 DEFAULT_LOGIN_COMPLETION_TIMEOUT_SECONDS = 60
 INTERACTIVE_LOGIN_COMPLETION_TIMEOUT_SECONDS = 600
 POST_AUTH_PORTAL_CONTINUATION_TIMEOUT_SECONDS = 60
+MFA_CODE_COMPLETION_TIMEOUT_SECONDS = 120
 DEVELOPER_PORTAL_URL = "https://developer.servicenow.com/navpage.do"
 POST_AUTH_SSO_HOSTS = {"signon.service-now.com", "signon.servicenow.com"}
+MFA_CODE_HOSTS = POST_AUTH_SSO_HOSTS | {"accounts.google.com"}
+MFA_CODE_LOCATORS = (
+    (By.NAME, "totpPin"),
+    (By.ID, "totpPin"),
+    (By.NAME, "idvPin"),
+    (By.ID, "idvPin"),
+    (By.CSS_SELECTOR, 'input[autocomplete="one-time-code"]'),
+)
+MFA_CODE_PATTERN = re.compile(r"^[0-9]{4,12}$")
 
 
 def _safe_browser_location(driver: Any) -> str:
@@ -86,6 +99,58 @@ def _login_return_state(driver: Any) -> str | bool:
     if _at_post_auth_sso_landing(driver):
         return "post_auth_sso"
     return False
+
+
+def _mfa_code_field(driver: Any) -> Any | None:
+    """Return only a visible one-time-code field on an expected identity host."""
+    try:
+        if urlparse(driver.current_url).hostname not in MFA_CODE_HOSTS:
+            return None
+        for by, value in MFA_CODE_LOCATORS:
+            for field in driver.find_elements(by, value):
+                if field.is_displayed() and field.is_enabled():
+                    return field
+    except Exception:
+        return None
+    return None
+
+
+def _login_or_mfa_state(driver: Any) -> str | bool:
+    """Return Portal completion or the one supported local MFA-code challenge."""
+    return _login_return_state(driver) or ("mfa_code" if _mfa_code_field(driver) else False)
+
+
+def prompt_for_mfa_code() -> str | None:
+    """Read a one-time code from the local terminal without echoing or logging it."""
+    try:
+        code = getpass.getpass("Enter the visible ServiceNow/Google MFA code: ").strip()
+    except (EOFError, KeyboardInterrupt, OSError):
+        logger.error("MFA code was not provided at the local terminal")
+        return None
+    if not MFA_CODE_PATTERN.fullmatch(code):
+        logger.error("MFA code was rejected locally; expected 4 to 12 digits")
+        return None
+    return code
+
+
+def _enter_mfa_code(driver: Any, code: str) -> bool:
+    """Enter one validated code into the detected challenge field and submit it."""
+    if not MFA_CODE_PATTERN.fullmatch(code):
+        logger.error("MFA code was rejected locally; expected 4 to 12 digits")
+        return False
+    field = _mfa_code_field(driver)
+    if field is None:
+        logger.error("MFA code challenge was no longer available on an expected identity host")
+        return False
+    try:
+        field.click()
+        field.clear()
+        field.send_keys(code)
+        field.send_keys(Keys.RETURN)
+        return True
+    except Exception as error:
+        logger.error("MFA code submission failed (%s at %s)", type(error).__name__, _safe_browser_location(driver))
+        return False
 
 def handle_login_error(driver) -> str:
     """Detect a Portal login error without placing page content in logs."""
@@ -190,11 +255,12 @@ def _login_completion_timeout_seconds() -> int:
     return DEFAULT_LOGIN_COMPLETION_TIMEOUT_SECONDS
 
 
-def wait_for_login_completion(driver: Any) -> bool:
-    """Wait for Portal return, repairing only the known post-auth SSO handoff."""
+def wait_for_login_completion(driver: Any, *, mfa_code_prompt: bool = False) -> bool:
+    """Wait for Portal return and optionally enter one local MFA code on a known form."""
     timeout_seconds = _login_completion_timeout_seconds()
     try:
-        state = WebDriverWait(driver, timeout_seconds).until(_login_return_state)
+        state_condition = _login_or_mfa_state if mfa_code_prompt else _login_return_state
+        state = WebDriverWait(driver, timeout_seconds).until(state_condition)
         if state == "developer_portal":
             logger.info("signin success")
             return True
@@ -210,6 +276,29 @@ def wait_for_login_completion(driver: Any) -> bool:
             logger.info("signin success after Portal continuation")
             return True
 
+        if state == "mfa_code" and mfa_code_prompt:
+            code = prompt_for_mfa_code()
+            if code is None or not _enter_mfa_code(driver, code):
+                return False
+            state = WebDriverWait(driver, MFA_CODE_COMPLETION_TIMEOUT_SECONDS).until(
+                _login_return_state
+            )
+            if state == "developer_portal":
+                logger.info("signin success after local MFA code")
+                return True
+            if state == "post_auth_sso":
+                logger.info(
+                    "Local MFA completed without Portal RelayState return; requesting Portal continuation"
+                )
+                driver.get(DEVELOPER_PORTAL_URL)
+                WebDriverWait(driver, POST_AUTH_PORTAL_CONTINUATION_TIMEOUT_SECONDS).until(
+                    _at_developer_portal
+                )
+                logger.info("signin success after local MFA code and Portal continuation")
+                return True
+            logger.error("MFA code submission returned an unrecognized completion state")
+            return False
+
         logger.error("Portal sign-in returned an unrecognized completion state")
         return False
     except Exception as error:
@@ -220,7 +309,7 @@ def wait_for_login_completion(driver: Any) -> bool:
         )
         return False
 
-def do_sign_in(config: Dict[str, str]) -> Optional[Any]:
+def do_sign_in(config: Dict[str, str], *, mfa_code_prompt: bool = False) -> Optional[Any]:
     """
     Handle ServiceNow Developer Portal sign-in process
     
@@ -255,7 +344,7 @@ def do_sign_in(config: Dict[str, str]) -> Optional[Any]:
         if not enter_credentials(driver, sn_dev_username, sn_dev_password):
             return None
 
-        if not wait_for_login_completion(driver):
+        if not wait_for_login_completion(driver, mfa_code_prompt=mfa_code_prompt):
             logger.error(handle_login_error(driver))
             return None
 
