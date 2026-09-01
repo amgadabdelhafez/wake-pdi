@@ -187,6 +187,50 @@ class BrowserAuthenticationTests(unittest.TestCase):
         provider.assert_called_once_with()
         code_field.send_keys.assert_has_calls([call("123456"), call(auth.Keys.RETURN)])
 
+    def test_totp_selects_authenticator_app_before_requesting_a_code(self):
+        driver = Mock(current_url="https://accounts.google.com/signin/v2/challenge")
+        option = Mock()
+        code_field = Mock()
+        provider = Mock(return_value="123456")
+
+        with (
+            patch.dict(os.environ, {"CHROME_HEADLESS": "true"}, clear=False),
+            patch.object(auth, "WebDriverWait") as wait,
+            patch.object(auth, "_authenticator_app_option", return_value=option),
+            patch.object(auth, "_mfa_code_field", return_value=code_field),
+        ):
+            wait.return_value.until.side_effect = [
+                "authenticator_app",
+                "mfa_code",
+                "developer_portal",
+            ]
+
+            self.assertTrue(
+                auth.wait_for_login_completion(
+                    driver,
+                    mfa_code_provider=provider,
+                    select_authenticator_app=True,
+                )
+            )
+
+        option.click.assert_called_once_with()
+        provider.assert_called_once_with()
+        code_field.send_keys.assert_has_calls([call("123456"), call(auth.Keys.RETURN)])
+        self.assertEqual(
+            wait.call_args_list,
+            [
+                call(driver, auth.DEFAULT_LOGIN_COMPLETION_TIMEOUT_SECONDS),
+                call(driver, auth.MFA_CODE_COMPLETION_TIMEOUT_SECONDS),
+                call(driver, auth.MFA_CODE_COMPLETION_TIMEOUT_SECONDS),
+            ],
+        )
+
+    def test_authenticator_app_option_refuses_unrecognized_identity_hosts(self):
+        driver = Mock(current_url="https://untrusted.example.invalid/challenge")
+
+        self.assertIsNone(auth._authenticator_app_option(driver))
+        driver.find_elements.assert_not_called()
+
     def test_login_completion_refuses_multiple_local_mfa_code_sources(self):
         driver = Mock()
         provider = Mock()
@@ -202,6 +246,16 @@ class BrowserAuthenticationTests(unittest.TestCase):
 
         wait.assert_not_called()
         provider.assert_not_called()
+
+    def test_login_completion_refuses_authenticator_selection_without_a_code_source(self):
+        driver = Mock()
+
+        with patch.object(auth, "WebDriverWait") as wait:
+            self.assertFalse(
+                auth.wait_for_login_completion(driver, select_authenticator_app=True)
+            )
+
+        wait.assert_not_called()
 
     def test_mfa_code_field_refuses_unrecognized_identity_hosts(self):
         driver = Mock(current_url="https://untrusted.example.invalid/challenge")
@@ -277,6 +331,7 @@ class BrowserAuthenticationTests(unittest.TestCase):
 
         self.assertFalse(wait.call_args.kwargs["mfa_code_prompt"])
         self.assertIsNotNone(wait.call_args.kwargs["mfa_code_provider"])
+        self.assertTrue(wait.call_args.kwargs["select_authenticator_app"])
 
     def test_do_sign_in_refuses_multiple_local_mfa_code_sources_before_decryption(self):
         account = {"sn_dev_username": "user@example.invalid", "sn_dev_password": "ciphertext"}

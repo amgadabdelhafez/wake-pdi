@@ -32,6 +32,15 @@ MFA_CODE_LOCATORS = (
     (By.ID, "idvPin"),
     (By.CSS_SELECTOR, 'input[autocomplete="one-time-code"]'),
 )
+AUTHENTICATOR_APP_LOCATORS = (
+    (
+        By.XPATH,
+        "//*[self::button or @role='button'][contains(translate(normalize-space(.), "
+        "'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'authenticator') "
+        "or contains(translate(@aria-label, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', "
+        "'abcdefghijklmnopqrstuvwxyz'), 'authenticator')]",
+    ),
+)
 MFA_CODE_PATTERN = re.compile(r"^[0-9]{4,12}$")
 MFA_TOTP_ACCOUNT_PATTERN = re.compile(r"^[^/\s@]+@[^/\s@]+$")
 MFA_TOTP_COMMAND = "mfa-vault-code"
@@ -123,6 +132,47 @@ def _mfa_code_field(driver: Any) -> Any | None:
 def _login_or_mfa_state(driver: Any) -> str | bool:
     """Return Portal completion or the one supported local MFA-code challenge."""
     return _login_return_state(driver) or ("mfa_code" if _mfa_code_field(driver) else False)
+
+
+def _authenticator_app_option(driver: Any) -> Any | None:
+    """Return a visible Authenticator-app choice on an expected identity host only."""
+    try:
+        if urlparse(driver.current_url).hostname not in MFA_CODE_HOSTS:
+            return None
+        for by, value in AUTHENTICATOR_APP_LOCATORS:
+            for option in driver.find_elements(by, value):
+                if option.is_displayed() and option.is_enabled():
+                    return option
+    except Exception:
+        return None
+    return None
+
+
+def _login_or_mfa_or_authenticator_app_state(driver: Any) -> str | bool:
+    """Recognize the guarded Authenticator-app chooser before a code challenge."""
+    return (
+        _login_return_state(driver)
+        or ("mfa_code" if _mfa_code_field(driver) else False)
+        or ("authenticator_app" if _authenticator_app_option(driver) else False)
+    )
+
+
+def _select_authenticator_app(driver: Any) -> bool:
+    """Choose the recognized Authenticator-app route without reading page content."""
+    option = _authenticator_app_option(driver)
+    if option is None:
+        logger.error("Authenticator-app choice was no longer available on an expected identity host")
+        return False
+    try:
+        option.click()
+        return True
+    except Exception as error:
+        logger.error(
+            "Authenticator-app selection failed (%s at %s)",
+            type(error).__name__,
+            _safe_browser_location(driver),
+        )
+        return False
 
 
 def prompt_for_mfa_code() -> str | None:
@@ -301,6 +351,7 @@ def wait_for_login_completion(
     *,
     mfa_code_prompt: bool = False,
     mfa_code_provider: Callable[[], str | None] | None = None,
+    select_authenticator_app: bool = False,
 ) -> bool:
     """Wait for Portal return and optionally enter one local MFA code on a known form."""
     if mfa_code_prompt and mfa_code_provider is not None:
@@ -308,9 +359,16 @@ def wait_for_login_completion(
         return False
 
     code_provider = prompt_for_mfa_code if mfa_code_prompt else mfa_code_provider
+    if select_authenticator_app and code_provider is None:
+        logger.error("Authenticator-app selection requires one local MFA-code source")
+        return False
     timeout_seconds = _login_completion_timeout_seconds()
     try:
-        state_condition = _login_or_mfa_state if code_provider is not None else _login_return_state
+        state_condition = (
+            _login_or_mfa_or_authenticator_app_state
+            if select_authenticator_app
+            else _login_or_mfa_state if code_provider is not None else _login_return_state
+        )
         state = WebDriverWait(driver, timeout_seconds).until(state_condition)
         if state == "developer_portal":
             logger.info("signin success")
@@ -326,6 +384,13 @@ def wait_for_login_completion(
             )
             logger.info("signin success after Portal continuation")
             return True
+
+        if state == "authenticator_app" and select_authenticator_app:
+            if not _select_authenticator_app(driver):
+                return False
+            state = WebDriverWait(driver, MFA_CODE_COMPLETION_TIMEOUT_SECONDS).until(
+                _login_or_mfa_state
+            )
 
         if state == "mfa_code" and code_provider is not None:
             code = code_provider()
@@ -408,6 +473,7 @@ def do_sign_in(
             driver,
             mfa_code_prompt=mfa_code_prompt,
             mfa_code_provider=mfa_code_provider,
+            select_authenticator_app=mfa_totp,
         ):
             logger.error(handle_login_error(driver))
             return None

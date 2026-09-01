@@ -48,13 +48,15 @@ Capture requires visible browser MFA for **every configured account**. Choose
 one local code source when the identity provider asks for a one-time code:
 `--mfa-code-prompt` reads one numeric code from the terminal without echoing it;
 `--mfa-totp` invokes the local `mfa-vault-code` helper after the recognized
-challenge appears. The TOTP mode derives `servicenow/<configured-email>` for
-each configured account, accepts only a 4 to 12 digit result, and invokes the
-helper without a shell. Neither mode logs or retains the code, submits it only
-to a recognized visible ServiceNow or Google one-time-code field, and operates
-only in the local visible-browser capture flow, never in K3s. WakePDI validates
-Portal status before including an account in the new store. If any account
-fails, it emits no session data and preserves any prior store.
+challenge appears. When the identity provider first presents a visible
+Authenticator-app choice, TOTP mode selects that recognized control before it
+requests a code. It derives `servicenow/<configured-email>` for each configured
+account, accepts only a 4 to 12 digit result, and invokes the helper without a
+shell. Neither mode logs or retains the code, submits it only to a recognized
+visible ServiceNow or Google one-time-code field, and operates only in the
+local visible-browser capture flow, never in K3s. WakePDI validates Portal
+status before including an account in the new store. If any account fails, it
+emits no session data and preserves any prior store.
 
 Each stored session has a maximum 120-hour lifetime by default: the 96-hour
 wake cadence plus one daily reconciliation opportunity. An earlier cookie
