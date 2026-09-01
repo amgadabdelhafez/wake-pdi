@@ -38,8 +38,15 @@ MFA_CODE_LOCATORS = (
     (By.CSS_SELECTOR, 'input[autocomplete="one-time-code"]'),
 )
 AUTHENTICATOR_APP_LOCATORS = (
-    # Okta renders a generic "Select" control inside this method card.  Bind
-    # selection to the card rather than guessing from a generic action label.
+    # This tenant renders identical generic "Select" controls for each method.
+    # Bind the control to the card with the exact Authenticator App label.
+    (
+        By.XPATH,
+        "//*[normalize-space()='Authenticator App']"
+        "/ancestor::*[count(.//button[normalize-space()='Select']) = 1][1]"
+        "//button[normalize-space()='Select']",
+    ),
+    # Compatibility with tenants that expose the method as a stable card id.
     (
         By.CSS_SELECTOR,
         "#google_otp button, #google_otp [role='button'], "
