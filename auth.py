@@ -38,6 +38,14 @@ MFA_CODE_LOCATORS = (
     (By.CSS_SELECTOR, 'input[autocomplete="one-time-code"]'),
 )
 AUTHENTICATOR_APP_LOCATORS = (
+    # Okta renders a generic "Select" control inside this method card.  Bind
+    # selection to the card rather than guessing from a generic action label.
+    (
+        By.CSS_SELECTOR,
+        "#google_otp button, #google_otp [role='button'], "
+        "#google_otp input[type='button'], #google_otp input[type='submit'], "
+        "#google_otp a",
+    ),
     (
         By.XPATH,
         "//*[self::button or @role='button'][contains(translate(normalize-space(.), "
@@ -170,6 +178,7 @@ def _select_authenticator_app(driver: Any) -> bool:
         return False
     try:
         option.click()
+        logger.info("Selected Authenticator App verification method")
         return True
     except Exception as error:
         logger.error(

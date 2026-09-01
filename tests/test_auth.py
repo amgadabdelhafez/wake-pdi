@@ -268,6 +268,21 @@ class BrowserAuthenticationTests(unittest.TestCase):
         self.assertIsNone(auth._authenticator_app_option(driver))
         driver.find_elements.assert_not_called()
 
+    def test_authenticator_app_option_targets_google_otp_card_action_first(self):
+        driver = Mock(current_url="https://accounts.google.com/signin/v2/challenge")
+        option = Mock()
+        option.is_displayed.return_value = True
+        option.is_enabled.return_value = True
+        driver.find_elements.return_value = [option]
+
+        self.assertIs(auth._authenticator_app_option(driver), option)
+        driver.find_elements.assert_called_once_with(
+            auth.By.CSS_SELECTOR,
+            "#google_otp button, #google_otp [role='button'], "
+            "#google_otp input[type='button'], #google_otp input[type='submit'], "
+            "#google_otp a",
+        )
+
     def test_login_completion_refuses_multiple_local_mfa_code_sources(self):
         driver = Mock()
         provider = Mock()
