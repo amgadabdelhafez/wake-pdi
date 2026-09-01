@@ -15,6 +15,9 @@ logger = setup_logger(__name__)
 PORTAL_LOGIN_TRANSITION_SECONDS = 10
 DEFAULT_LOGIN_COMPLETION_TIMEOUT_SECONDS = 60
 INTERACTIVE_LOGIN_COMPLETION_TIMEOUT_SECONDS = 600
+POST_AUTH_PORTAL_CONTINUATION_TIMEOUT_SECONDS = 60
+DEVELOPER_PORTAL_URL = "https://developer.servicenow.com/navpage.do"
+POST_AUTH_SSO_HOSTS = {"signon.service-now.com", "signon.servicenow.com"}
 
 
 def _safe_browser_location(driver: Any) -> str:
@@ -49,6 +52,40 @@ def _safe_browser_form_state(driver: Any) -> str:
         return "controls=%s;iframe=%s" % (",".join(visible) or "none", iframe_present)
     except Exception:
         return "unavailable"
+
+
+def _at_developer_portal(driver: Any) -> bool:
+    """Return whether the browser reached the expected Portal host."""
+    try:
+        return urlparse(driver.current_url).hostname == "developer.servicenow.com"
+    except Exception:
+        return False
+
+
+def _at_post_auth_sso_landing(driver: Any) -> bool:
+    """Recognize the completed SSO landing that sometimes loses RelayState.
+
+    The continuation is intentionally narrower than a generic SSO URL: it is
+    available only after the known ``/sso`` landing has no visible credential
+    controls or iframe challenge. That preserves the fail-closed behavior for
+    every still-interactive or unknown sign-in state.
+    """
+    try:
+        location = urlparse(driver.current_url)
+    except Exception:
+        return False
+    if location.hostname not in POST_AUTH_SSO_HOSTS or location.path != "/sso":
+        return False
+    return _safe_browser_form_state(driver) == "controls=none;iframe=False"
+
+
+def _login_return_state(driver: Any) -> str | bool:
+    """Report the only two accepted states during the browser sign-in handoff."""
+    if _at_developer_portal(driver):
+        return "developer_portal"
+    if _at_post_auth_sso_landing(driver):
+        return "post_auth_sso"
+    return False
 
 def handle_login_error(driver) -> str:
     """Detect a Portal login error without placing page content in logs."""
@@ -154,14 +191,27 @@ def _login_completion_timeout_seconds() -> int:
 
 
 def wait_for_login_completion(driver: Any) -> bool:
-    """Wait for login to land anywhere on the developer portal."""
+    """Wait for Portal return, repairing only the known post-auth SSO handoff."""
     timeout_seconds = _login_completion_timeout_seconds()
     try:
-        WebDriverWait(driver, timeout_seconds).until(
-            EC.url_contains("developer.servicenow.com")
-        )
-        logger.info("signin success")
-        return True
+        state = WebDriverWait(driver, timeout_seconds).until(_login_return_state)
+        if state == "developer_portal":
+            logger.info("signin success")
+            return True
+
+        if state == "post_auth_sso":
+            logger.info(
+                "ServiceNow SSO completed without Portal RelayState return; requesting Portal continuation"
+            )
+            driver.get(DEVELOPER_PORTAL_URL)
+            WebDriverWait(driver, POST_AUTH_PORTAL_CONTINUATION_TIMEOUT_SECONDS).until(
+                _at_developer_portal
+            )
+            logger.info("signin success after Portal continuation")
+            return True
+
+        logger.error("Portal sign-in returned an unrecognized completion state")
+        return False
     except Exception as error:
         logger.error(
             "Portal sign-in did not return to Developer Portal (%s at %s)",

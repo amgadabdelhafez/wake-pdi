@@ -1,9 +1,11 @@
 import logging
 import os
 import sys
+from pathlib import Path
 
 from logger import setup_logger
 from scheduler import ScheduleState, is_active_assigned_pdi, status_summary, utc_now
+from session_store import SessionStoreError
 from utils import get_args
 
 
@@ -28,6 +30,91 @@ def _close_session(session) -> None:
         session.close()
     except Exception:
         logger.warning("Unable to close a Portal session cleanly")
+
+
+def _durable_session_only() -> bool:
+    return os.environ.get("WAKE_PDI_DURABLE_SESSION_ONLY", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
+def _capture_durable_sessions(config, args, do_sign_in, get_instance_info) -> int:
+    from session_store import (
+        SessionStoreError,
+        encrypt_session_store,
+        session_record_from_requests_session,
+        write_session_store,
+    )
+
+    account_records = {}
+    failed_accounts = 0
+    for account_number, (account, login_info) in enumerate(config.items(), start=1):
+        logger.info("Capturing durable Portal session for configured account %d", account_number)
+        session = do_sign_in(login_info)
+        if session is None:
+            logger.error("Account %d could not authenticate; session store was not updated", account_number)
+            failed_accounts += 1
+            continue
+        try:
+            instance_info = get_instance_info(session)
+            if not isinstance(instance_info, dict):
+                logger.error(
+                    "Account %d did not return Portal status; session store was not updated",
+                    account_number,
+                )
+                failed_accounts += 1
+                continue
+            account_records[account] = session_record_from_requests_session(
+                session, max_age_hours=args["session_max_age_hours"]
+            )
+        except SessionStoreError as error:
+            logger.error("Account %d session capture failed: %s", account_number, error)
+            failed_accounts += 1
+        finally:
+            _close_session(session)
+
+    if failed_accounts:
+        logger.error("At least one account did not produce a Portal-validated durable session")
+        return 1
+    try:
+        if args.get("capture_sessions_stdout"):
+            # stdout is reserved for a direct trusted pipe to the Kubernetes API.
+            # Operational logs use stderr, so no plaintext or log lines enter it.
+            sys.stdout.buffer.write(encrypt_session_store(account_records))
+            sys.stdout.buffer.flush()
+        else:
+            write_session_store(Path(args["session_file"]), account_records)
+    except SessionStoreError as error:
+        logger.error("Durable Portal session store was not persisted: %s", error)
+        return 1
+    logger.info("Captured durable Portal sessions for %d configured accounts", len(account_records))
+    return 0
+
+
+def _session_for_account(
+    account_number: int,
+    account: str,
+    login_info,
+    *,
+    durable_session_only: bool,
+    session_file: Path,
+    do_sign_in,
+    load_account_session=None,
+):
+    """Return an authenticated account session without weakening durable-only mode."""
+    if durable_session_only:
+        try:
+            return load_account_session(session_file, account)
+        except SessionStoreError as error:
+            logger.error(
+                "Account %d requires manual MFA renewal; durable Portal session is unavailable (%s)",
+                account_number,
+                error,
+            )
+            return None
+    return do_sign_in(login_info)
 
 
 def _wake_account(
@@ -80,6 +167,18 @@ def main() -> int:
         logger.error("Authentication dependencies are unavailable: %s", error)
         return 2
 
+    if args["capture_sessions"]:
+        return _capture_durable_sessions(config, args, do_sign_in, get_instance_info)
+
+    durable_session_only = _durable_session_only()
+    session_file = Path(os.environ.get("WAKE_PDI_SESSION_FILE", "data/portal_sessions.enc"))
+    if durable_session_only:
+        try:
+            from session_store import load_account_session
+        except ImportError as error:
+            logger.error("Durable-session dependencies are unavailable: %s", error)
+            return 2
+
     schedule_state = None
     if args["reconcile"]:
         try:
@@ -91,7 +190,15 @@ def main() -> int:
     failed_accounts = 0
     for account_number, (account, login_info) in enumerate(config.items(), start=1):
         logger.info("Checking configured account %d", account_number)
-        session = do_sign_in(login_info)
+        session = _session_for_account(
+            account_number,
+            account,
+            login_info,
+            durable_session_only=durable_session_only,
+            session_file=session_file,
+            do_sign_in=do_sign_in,
+            load_account_session=load_account_session if durable_session_only else None,
+        )
         if session is None:
             logger.error("Account %d could not authenticate", account_number)
             failed_accounts += 1

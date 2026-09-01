@@ -1,6 +1,6 @@
 import os
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 import auth
 
@@ -20,7 +20,7 @@ class BrowserAuthenticationTests(unittest.TestCase):
             patch.dict(os.environ, {"CHROME_HEADLESS": "false"}, clear=False),
             patch.object(auth, "WebDriverWait") as wait,
         ):
-            wait.return_value.until.return_value = True
+            wait.return_value.until.return_value = "developer_portal"
 
             self.assertTrue(auth.wait_for_login_completion(driver))
 
@@ -41,12 +41,30 @@ class BrowserAuthenticationTests(unittest.TestCase):
             ),
             patch.object(auth, "WebDriverWait") as wait,
         ):
-            wait.return_value.until.return_value = True
+            wait.return_value.until.return_value = "developer_portal"
 
             self.assertTrue(auth.wait_for_login_completion(driver))
 
         wait.assert_called_once_with(
             driver, auth.DEFAULT_LOGIN_COMPLETION_TIMEOUT_SECONDS
+        )
+
+    def test_post_auth_sso_landing_requests_bounded_portal_continuation(self):
+        driver = Mock(current_url="https://signon.service-now.com/sso")
+        driver.find_elements.return_value = []
+
+        with patch.object(auth, "WebDriverWait") as wait:
+            wait.return_value.until.side_effect = ["post_auth_sso", True]
+
+            self.assertTrue(auth.wait_for_login_completion(driver))
+
+        driver.get.assert_called_once_with(auth.DEVELOPER_PORTAL_URL)
+        self.assertEqual(
+            wait.call_args_list,
+            [
+                call(driver, auth.DEFAULT_LOGIN_COMPLETION_TIMEOUT_SECONDS),
+                call(driver, auth.POST_AUTH_PORTAL_CONTINUATION_TIMEOUT_SECONDS),
+            ],
         )
 
     def test_browser_location_diagnostic_removes_query_values(self):

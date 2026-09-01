@@ -47,6 +47,7 @@ COPY --chown=appuser:appuser \
     instance.py \
     logger.py \
     scheduler.py \
+    session_store.py \
     utils.py \
     wake.py \
     ./

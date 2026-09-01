@@ -49,6 +49,24 @@ def get_args():
         metavar="ACCOUNT",
         help="remove one explicitly named account from a local encrypted config",
     )
+    action.add_argument(
+        "--capture-sessions",
+        dest="capture_sessions",
+        action="store_true",
+        help=(
+            "complete visible Portal sign-in for every configured account and write "
+            "an encrypted durable-session store"
+        ),
+    )
+    parser.add_argument(
+        "--capture-sessions-stdout",
+        dest="capture_sessions_stdout",
+        action="store_true",
+        help=(
+            "emit the encrypted durable-session store to stdout for a trusted "
+            "pipe; requires --capture-sessions and cannot be used with --session-file"
+        ),
+    )
     parser.add_argument(
         "--allow-wake",
         action="store_true",
@@ -87,6 +105,23 @@ def get_args():
         action="store_true",
         help="show the browser for a local interactive diagnostic run",
     )
+    parser.add_argument(
+        "--session-file",
+        dest="session_file",
+        help=(
+            "path to an encrypted durable Portal-session store; required for "
+            "--capture-sessions"
+        ),
+    )
+    parser.add_argument(
+        "--session-max-age-hours",
+        type=_positive_integer,
+        default=_positive_integer(os.environ.get("WAKE_PDI_SESSION_MAX_AGE_HOURS", "120")),
+        help=(
+            "maximum age recorded for a captured Portal session before manual MFA "
+            "renewal is required (default: 120)"
+        ),
+    )
 
     args = vars(parser.parse_args())
     if args["allow_wake"] and not args["reconcile"]:
@@ -95,6 +130,16 @@ def get_args():
         parser.error("--reconcile requires a non-empty --state-file")
     if args["not_headless"] and args["auth_mode"] != "browser":
         parser.error("--not-headless requires --auth-mode browser")
+    if args["capture_sessions"] and args["auth_mode"] != "browser":
+        parser.error("--capture-sessions requires --auth-mode browser")
+    if args["capture_sessions"] and not args["not_headless"]:
+        parser.error("--capture-sessions requires --not-headless for manual MFA")
+    if args["capture_sessions_stdout"] and not args["capture_sessions"]:
+        parser.error("--capture-sessions-stdout requires --capture-sessions")
+    if args["capture_sessions_stdout"] and args["session_file"]:
+        parser.error("--capture-sessions-stdout cannot be used with --session-file")
+    if args["capture_sessions"] and not args["capture_sessions_stdout"] and not args["session_file"]:
+        parser.error("--capture-sessions requires --session-file")
     return args
 
 

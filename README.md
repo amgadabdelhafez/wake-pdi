@@ -14,9 +14,10 @@ provision, reset, release, or otherwise create an instance.
   interval has elapsed.
 - Missing, expired, and `No Instance Assigned` accounts are reported and
   skipped. The application never calls the Portal's instance-provisioning API.
-- Credentials stay in the encrypted configuration and decryption-key files;
-  neither configuration, cookies, HTTP headers, passwords, nor session tokens
-  are written to application logs.
+- Credentials stay in the encrypted configuration and decryption-key files.
+  The optional durable Portal-session store is encrypted before it is mounted as
+  a Kubernetes Secret item. Neither configuration, cookies, HTTP headers,
+  passwords, nor session tokens are written to application logs.
 
 The default wake interval is 96 hours. The intended Kubernetes workload runs
 once per day, uses the persisted state to decide whether a wake is due, and
@@ -34,6 +35,33 @@ page-load boundary and applies a 45-second navigation timeout. The scheduler
 then waits explicitly for the Portal's own sign-in controls. This keeps a
 blocked tracking resource from holding a daily reconciliation indefinitely.
 
+## Durable Portal session route
+
+An unattended Kubernetes Job cannot complete the emailed MFA challenge. Its
+only supported route is an explicitly captured, encrypted Portal-session store.
+This is a compact requests-session record containing the Portal cookies and
+Developer Portal token needed by the status and direct-wake API. It is not a
+browser profile and does not contain browser cache, history, or saved form
+data.
+
+Capture requires visible browser MFA for **every configured account**. WakePDI
+validates Portal status before including an account in the new store. If any
+account fails, it emits no session data and preserves any prior store.
+
+Each stored session has a maximum 120-hour lifetime by default: the 96-hour
+wake cadence plus one daily reconciliation opportunity. An earlier cookie
+expiry wins. This is a local renewal bound, not a claim about ServiceNow's
+actual token lifetime. Every scheduler run independently validates the Portal
+session; missing, unreadable, expired, or Portal-rejected sessions fail closed,
+require manual MFA renewal, and never fall back to headless browser login.
+
+The encrypted session file belongs in the same Kubernetes Secret as
+`config.json` and `dec_key.bin`, under the name `portal_sessions.enc`. Do not
+print, commit, or paste its contents. Because the decrypting key is mounted in
+that same workload Secret, this encryption prevents accidental plaintext
+handling and log disclosure; Kubernetes Secret access, namespace policy, and
+the workload's read-only mount remain the primary access boundary.
+
 ## Commands
 
 Use a local encrypted account configuration only from a trusted directory.
@@ -48,6 +76,12 @@ python wake.py --status
 # up to 10 minutes after credential handoff; unattended runs retain a 60-second
 # completion window.
 python wake.py --status --auth-mode browser --not-headless
+
+# Capture renewed durable sessions through visible MFA and stream the encrypted
+# result directly to the trusted Kubernetes Secret applier. Do not run this
+# command without the pipe, as stdout carries encrypted session material.
+python wake.py --capture-sessions --capture-sessions-stdout --auth-mode browser --not-headless \
+  | /Users/amgad/dev_projects/homelab-k8s-baseline/workloads/wake-pdi/apply-session-store.sh
 
 # Deliberately wake active assigned PDIs now. This is a Portal mutation.
 python wake.py --wake-up
@@ -79,5 +113,6 @@ docker run --rm wake-pdi:local
 
 The Kubernetes delivery contract is maintained separately in
 `/Users/amgad/dev_projects/homelab-k8s-baseline/workloads/wake-pdi`. It mounts
-the encrypted configuration as a read-only Secret and stores only schedule
-timestamps and hashed account identifiers on an explicit NFS PVC.
+the encrypted configuration and durable-session record as a read-only Secret
+and stores only schedule timestamps and hashed account identifiers on an
+explicit NFS PVC.
