@@ -65,7 +65,8 @@ Secret, or used by unattended K3s jobs. At TOTP time WakePDI decrypts it only
 to a short-lived owner-only file passed to the helper by path, then removes that
 temporary file. Keep the plaintext import source owner-readable only and remove
 it manually after confirming the encrypted import if that is appropriate for
-your local recovery process.
+your local recovery process. The import accepts one normal terminal newline in
+the plaintext file but rejects all other newline characters.
 
 Each stored session has a maximum 120-hour lifetime by default: the 96-hour
 wake cadence plus one daily reconciliation opportunity. An earlier cookie

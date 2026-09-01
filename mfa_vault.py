@@ -33,6 +33,15 @@ def _validate_passphrase(passphrase: bytes) -> None:
         raise MfaVaultPassphraseError("MFA vault passphrase source is invalid")
 
 
+def _normalize_imported_passphrase(passphrase: bytes) -> bytes:
+    """Allow one conventional text-file line ending without trimming password data."""
+    if passphrase.endswith(b"\r\n"):
+        return passphrase[:-2]
+    if passphrase.endswith(b"\n"):
+        return passphrase[:-1]
+    return passphrase
+
+
 def _write_private_bytes(destination: Path, contents: bytes) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_path = tempfile.mkstemp(
@@ -63,7 +72,7 @@ def import_mfa_vault_passphrase(source_file: str | Path) -> Path:
             raise MfaVaultPassphraseError("MFA vault passphrase source must be a regular file")
         if stat.S_IMODE(source_stat.st_mode) & 0o077:
             raise MfaVaultPassphraseError("MFA vault passphrase source must be owner-readable only")
-        passphrase = source.read_bytes()
+        passphrase = _normalize_imported_passphrase(source.read_bytes())
     except OSError as error:
         raise MfaVaultPassphraseError("Could not read the MFA vault passphrase source") from error
 

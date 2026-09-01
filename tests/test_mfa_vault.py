@@ -39,7 +39,7 @@ class MfaVaultPassphraseTests(unittest.TestCase):
             self.assertNotEqual(destination.read_bytes(), b"shared-passphrase")
             self.assertEqual(stat.S_IMODE(destination.stat().st_mode), 0o600)
 
-    def test_import_refuses_an_insecure_or_multiline_source(self):
+    def test_import_accepts_one_terminal_newline_but_refuses_an_insecure_or_multiline_source(self):
         key = Fernet.generate_key()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -59,6 +59,18 @@ class MfaVaultPassphraseTests(unittest.TestCase):
                     mfa_vault.import_mfa_vault_passphrase(source)
 
             os.chmod(source, 0o600)
+            with (
+                patch.object(mfa_vault, "get_key", return_value=key),
+                patch.dict(
+                    os.environ,
+                    {"WAKE_PDI_MFA_VAULT_PASSPHRASE_FILE": str(destination)},
+                    clear=False,
+                ),
+            ):
+                mfa_vault.import_mfa_vault_passphrase(source)
+                self.assertEqual(mfa_vault.load_mfa_vault_passphrase(), b"passphrase")
+
+            source.write_bytes(b"passphrase\nextra")
             with (
                 patch.object(mfa_vault, "get_key", return_value=key),
                 patch.dict(
