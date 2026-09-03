@@ -46,6 +46,7 @@ COPY --chown=appuser:appuser \
     firefox_utils.py \
     instance.py \
     logger.py \
+    mfa_vault.py \
     scheduler.py \
     session_store.py \
     utils.py \
