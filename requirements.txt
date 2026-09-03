@@ -4,7 +4,7 @@ selenium-wire==5.1.0
 webdriver-manager==4.0.2
 
 # HTTP and requests
-requests==2.31.0
+requests==2.33.0
 urllib3>=2.0.7,<3.0.0
 charset-normalizer>=3.0.1
 certifi>=2023.7.22
@@ -23,10 +23,10 @@ xvfbwrapper==0.2.9
 schedule==1.2.1
 
 # Configuration and environment
-python-dotenv==1.0.0
+python-dotenv==1.2.2
 
 # Encryption and security
-cryptography==41.0.7
+cryptography==49.0.0
 fernet==1.0.1
 pyOpenSSL>=23.2.0
 

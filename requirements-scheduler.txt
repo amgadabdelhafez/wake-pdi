@@ -2,9 +2,9 @@
 # Firefox WebDriver. Selenium Wire and webdriver-manager are intentionally not
 # included: no intercepting proxy or runtime driver download is needed.
 selenium==4.15.2
-requests==2.31.0
+requests==2.33.0
 urllib3>=2.0.7,<3.0.0
 charset-normalizer>=3.0.1
 certifi>=2023.7.22
-python-dotenv==1.0.0
-cryptography==41.0.7
+python-dotenv==1.2.2
+cryptography==49.0.0
