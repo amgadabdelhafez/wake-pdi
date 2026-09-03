@@ -85,34 +85,43 @@ the workload's read-only mount remain the primary access boundary.
 ## Commands
 
 Use a local encrypted account configuration only from a trusted directory.
+
+Browser selection is controlled by `WAKE_PDI_BROWSER`. When it is unset, local
+runs default to Chrome (`chrome_utils.py`; a matching ChromeDriver is fetched by
+`webdriver-manager`). The container image pins `WAKE_PDI_BROWSER=firefox` with
+`firefox-esr` and GeckoDriver, so scheduler and status Jobs in Kubernetes use
+Firefox. Set `WAKE_PDI_BROWSER=firefox` locally to reproduce the image's
+behaviour. The examples below use the project virtualenv interpreter; a bare
+`python` may not be on `PATH`, and the `apply-session-store.sh` pipe then
+refuses the empty stream rather than writing anything.
 The default paths are `data/config.json` and `data/dec_key.bin`; the latter can
 be overridden with `WAKE_PDI_KEY_FILE`.
 
 ```sh
 # Read-only Portal status for every configured account.
-python wake.py --status
+./.venv/bin/python wake.py --status
 
 # Visible browser flow for a human-completed Portal SSO challenge. This permits
 # up to 10 minutes after credential handoff; unattended runs retain a 60-second
 # completion window.
-python wake.py --status --auth-mode browser --not-headless
+./.venv/bin/python wake.py --status --auth-mode browser --not-headless
 
 # Import a local MFA-vault passphrase from an owner-only plaintext file. This
 # creates data/mfa_vault_passphrase.enc locally; do not mount or apply it to K3s.
-python wake.py --import-mfa-vault-passphrase /path/to/local-mfa-vault-passphrase
+./.venv/bin/python wake.py --import-mfa-vault-passphrase /path/to/local-mfa-vault-passphrase
 
 # Capture renewed durable sessions through visible MFA using the local TOTP
 # helper and stream the encrypted result directly to the trusted Kubernetes
 # Secret applier. Do not run this command without the pipe, as stdout carries
 # encrypted session material.
-python wake.py --capture-sessions --capture-sessions-stdout --mfa-totp --auth-mode browser --not-headless \
+./.venv/bin/python wake.py --capture-sessions --capture-sessions-stdout --mfa-totp --auth-mode browser --not-headless \
   | /Users/amgad/dev_projects/homelab-k8s-baseline/workloads/wake-pdi/apply-session-store.sh
 
 # Deliberately wake active assigned PDIs now. This is a Portal mutation.
-python wake.py --wake-up
+./.venv/bin/python wake.py --wake-up
 
 # Scheduler path: persist non-secret timing state, then wake only if due.
-python wake.py --reconcile --allow-wake \
+./.venv/bin/python wake.py --reconcile --allow-wake \
   --state-file /var/lib/wake-pdi/schedule-state.json \
   --wake-interval-hours 96
 ```
