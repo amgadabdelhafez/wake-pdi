@@ -101,6 +101,36 @@ def get_args():
         help="permit --reconcile to send a due wake request",
     )
     parser.add_argument(
+        "--allow-extend",
+        dest="allow_extend",
+        action="store_true",
+        help="permit --reconcile to send a due extend request (requires --extend-cat-item-id)",
+    )
+    parser.add_argument(
+        "--extend-cat-item-id",
+        dest="extend_cat_item_id",
+        default=os.environ.get("WAKE_PDI_EXTEND_CAT_ITEM_ID") or None,
+        help=(
+            "verified Portal catalog-item id for the Extend-instance operation; no default. "
+            "DANGER: execute_cat_item also drives destructive operations, so supply only an id "
+            "captured from a real Portal Extend click"
+        ),
+    )
+    parser.add_argument(
+        "--extend-inactivity-threshold-days",
+        dest="extend_inactivity_threshold_days",
+        type=_positive_integer,
+        default=_positive_integer(os.environ.get("WAKE_PDI_EXTEND_THRESHOLD_DAYS", "2")),
+        help="extend only when remaining inactivity days is at or below this value (default: 2)",
+    )
+    parser.add_argument(
+        "--extend-interval-hours",
+        dest="extend_interval_hours",
+        type=_positive_integer,
+        default=_positive_integer(os.environ.get("WAKE_PDI_EXTEND_INTERVAL_HOURS", "24")),
+        help="minimum interval between Portal-accepted extend requests (default: 24)",
+    )
+    parser.add_argument(
         "--config-file",
         dest="config_file",
         help="path to the encrypted account configuration",
@@ -154,6 +184,10 @@ def get_args():
     args = vars(parser.parse_args())
     if args["allow_wake"] and not args["reconcile"]:
         parser.error("--allow-wake requires --reconcile")
+    if args["allow_extend"] and not args["reconcile"]:
+        parser.error("--allow-extend requires --reconcile")
+    if args["allow_extend"] and not args["extend_cat_item_id"]:
+        parser.error("--allow-extend requires --extend-cat-item-id (no default; must be verified)")
     if args["reconcile"] and not args["state_file"]:
         parser.error("--reconcile requires a non-empty --state-file")
     if args["not_headless"] and args["auth_mode"] != "browser":

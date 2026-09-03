@@ -89,6 +89,52 @@ def wake_instance(session):
     """Send the Portal's explicit direct-wake request for an assigned PDI."""
     return get_instance_info(session, direct_wake_up=True)
 
+
+def execute_cat_item(session, ins_id, cat_item_id, additional_params=None):
+    """Submit one Portal instance catalog-item operation and return its result dict.
+
+    DANGER: ``instance.ops.execute_cat_item`` is the SAME endpoint the Portal uses for
+    destructive operations (including reset-and-wipe); the operation is selected ENTIRELY by
+    ``cat_item_id``. Only ever pass an operator-verified id captured from a real Portal click.
+    There is deliberately no default id anywhere in this codebase.
+    """
+    url = "https://developer.servicenow.com/devportal.do"
+    data = {"ins_id": ins_id, "cat_item_id": cat_item_id}
+    params = {"sysparm_data": json.dumps({
+        "action": "instance.ops.execute_cat_item",
+        "data": {**data, "additionalParams": {"isPdiSummary": True, **(additional_params or {})}},
+    })}
+    headers = get_headers(session.processed_cookies)
+    try:
+        response = session.get(url, params=params, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
+        if response.status_code != 200:
+            logger.warning("execute_cat_item HTTP %s", response.status_code)
+            return None
+        result = response.json().get("result")
+        if isinstance(result, dict) and str(result.get("status", "")).lower() in {"error", "failed"}:
+            logger.error("execute_cat_item rejected by the Portal")
+            return None
+        return result if isinstance(result, dict) else {}
+    except (requests.RequestException, ValueError) as error:
+        logger.error("execute_cat_item request failed (%s)", type(error).__name__)
+        return None
+
+
+def extend_instance(session, instance_info, cat_item_id):
+    """Send the Portal's Extend-instance catalog operation for an assigned PDI.
+
+    Requires the caller to supply the verified extend ``cat_item_id``; returns the Portal
+    result dict on acceptance or None. Never provisions, resets, or wipes.
+    """
+    if not cat_item_id:
+        logger.error("extend_instance called without a configured cat_item_id; refusing")
+        return None
+    ins_id = (instance_info or {}).get("sys_id")
+    if not ins_id:
+        logger.error("extend_instance has no instance sys_id")
+        return None
+    return execute_cat_item(session, ins_id, cat_item_id)
+
 def get_user_info(session):
     url = "https://developer.servicenow.com/api/snc/v1/dev/user_session_info?sysparm_data=%7B%22action%22:%22dev.user.session%22,%22data%22:%7B%22sysparm_okta%22:true%7D%7D"
     headers = get_headers(session.processed_cookies)

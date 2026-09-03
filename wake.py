@@ -132,10 +132,23 @@ def _wake_account(
     if wake_result is None:
         logger.error("Account %d wake request was not accepted by the Portal", account_number)
         return False
+    return True
+
+
+def _extend_account(
+    account_number: int, session, state, account: str, instance_info, cat_item_id, extend_instance
+) -> bool:
+    now = utc_now()
     if state:
-        state.record_wake_accepted(account, now)
+        state.record_extend_attempt(account, now)
+    result = extend_instance(session, instance_info, cat_item_id)
+    if result is None:
+        logger.error("Account %d extend request was not accepted by the Portal", account_number)
+        return False
+    if state:
+        state.record_extend_accepted(account, now)
     logger.info(
-        "Account %d wake request was accepted; the next daily run will verify status",
+        "Account %d extend request was accepted; the next daily run will verify status",
         account_number,
     )
     return True
@@ -178,7 +191,7 @@ def main() -> int:
             from auth_requests import do_sign_in_requests as do_sign_in
         else:
             from auth import do_sign_in
-        from instance import get_instance_info, wake_instance
+        from instance import get_instance_info, wake_instance, extend_instance
     except ImportError as error:
         logger.error("Authentication dependencies are unavailable: %s", error)
         return 2
@@ -262,6 +275,29 @@ def main() -> int:
                         failed_accounts += 1
                 else:
                     logger.info("Account %d wake deferred: %s", account_number, reason)
+
+            if args["reconcile"] and args["allow_extend"]:
+                due, reason = schedule_state.extend_due(
+                    account,
+                    now,
+                    args["extend_interval_hours"],
+                    instance_info.get("remainingInactivityDays"),
+                    args["extend_inactivity_threshold_days"],
+                )
+                if due:
+                    logger.info("Account %d is due for an extend: %s", account_number, reason)
+                    if not _extend_account(
+                        account_number,
+                        session,
+                        schedule_state,
+                        account,
+                        instance_info,
+                        args["extend_cat_item_id"],
+                        extend_instance,
+                    ):
+                        failed_accounts += 1
+                else:
+                    logger.info("Account %d extend deferred: %s", account_number, reason)
         finally:
             _close_session(session)
 

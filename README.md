@@ -117,6 +117,28 @@ python wake.py --reconcile --allow-wake \
   --wake-interval-hours 96
 ```
 
+## Extending instances (optional, disabled by default)
+
+An instance is reclaimed after its inactivity timer expires. `--reconcile --allow-extend`
+sends the Portal's Extend-instance operation, but ONLY when the timer is genuinely low
+(`remainingInactivityDays <= --extend-inactivity-threshold-days`, default 2) and the
+per-account interval has elapsed. A wake resets the same timer, so extend is pointless while
+the timer is near full and is deliberately skipped then.
+
+Extend requires an operator-verified catalog-item id and has NO default:
+
+```sh
+./.venv/bin/python wake.py --reconcile --allow-extend \
+  --extend-cat-item-id "$WAKE_PDI_EXTEND_CAT_ITEM_ID" \
+  --state-file /var/lib/wake-pdi/schedule-state.json
+```
+
+**DANGER:** `instance.ops.execute_cat_item` is the same Portal endpoint used for destructive
+operations (including reset-and-wipe); the operation is selected entirely by the id. Capture
+the extend id from a real Portal Extend click (DevTools -> Network -> the `execute_cat_item`
+request) and supply it via `--extend-cat-item-id` or `WAKE_PDI_EXTEND_CAT_ITEM_ID`. Without
+it, `--allow-extend` refuses to start.
+
 `--add-account` and `--remove-account <ACCOUNT>` are local account-management
 commands. They update encrypted local configuration only; they are not
 intended for Kubernetes.

@@ -99,6 +99,48 @@ class ScheduleState:
     def record_wake_accepted(self, account_name: str, now: datetime) -> None:
         self._entry(account_name)["last_wake_accepted_at"] = now.isoformat()
 
+    def record_extend_attempt(self, account_name: str, now: datetime) -> None:
+        self._entry(account_name)["last_extend_attempt_at"] = now.isoformat()
+
+    def record_extend_accepted(self, account_name: str, now: datetime) -> None:
+        self._entry(account_name)["last_extend_accepted_at"] = now.isoformat()
+
+    def extend_due(
+        self,
+        account_name: str,
+        now: datetime,
+        interval_hours: int,
+        remaining_inactivity_days,
+        threshold_days: int,
+    ) -> tuple[bool, str]:
+        """Extend only when the inactivity clock is genuinely low.
+
+        Extend resets the inactivity timer, so it is pointless while the timer is near full.
+        Due requires: a numeric remaining-inactivity reading at or below ``threshold_days``,
+        the failed-attempt cool-off cleared, and the min interval since the last acceptance.
+        """
+        if remaining_inactivity_days is None:
+            return False, "remaining inactivity days is unknown"
+        try:
+            remaining = float(remaining_inactivity_days)
+        except (TypeError, ValueError):
+            return False, "remaining inactivity days is not numeric"
+        if remaining > threshold_days:
+            return False, (
+                f"{remaining:g} inactivity days remain (extend threshold {threshold_days})"
+            )
+        entry = self._entry(account_name)
+        attempted_at = _parse_timestamp(entry.get("last_extend_attempt_at"))
+        if attempted_at and now - attempted_at < FAILED_WAKE_RETRY_DELAY:
+            return False, "an extend attempt is awaiting the next daily status check"
+        accepted_at = _parse_timestamp(entry.get("last_extend_accepted_at"))
+        if accepted_at is None:
+            return True, f"{remaining:g} inactivity days remain and no prior extend is recorded"
+        due_at = accepted_at + timedelta(hours=interval_hours)
+        if now >= due_at:
+            return True, f"{remaining:g} inactivity days remain and the extend interval has elapsed"
+        return False, f"next extend eligible at {due_at.isoformat()}"
+
     def wake_due(
         self, account_name: str, now: datetime, interval_hours: int
     ) -> tuple[bool, str]:
