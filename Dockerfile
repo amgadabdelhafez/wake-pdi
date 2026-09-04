@@ -17,6 +17,7 @@ RUN apt-get update \
         ca-certificates \
         curl \
         firefox-esr \
+        xvfb \
         tar \
         tini \
     && curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
