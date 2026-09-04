@@ -104,6 +104,55 @@ def _safe_browser_form_state(driver: Any) -> str:
         return "unavailable"
 
 
+_DIAGNOSTIC_PAGE_SHAPE_ENV = "WAKE_PDI_DEBUG_PAGE_SHAPE"
+_DIAGNOSTIC_EMAIL_PATTERN = re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+")
+_DIAGNOSTIC_PAGE_SHAPE_SCRIPT = """
+const seen = [];
+const short = (s) => (s || '').replace(/\\s+/g, ' ').trim().slice(0, 48);
+for (const el of document.querySelectorAll(
+    "button, a, input, select, [role='button'], h1, h2, h3")) {
+  const r = el.getBoundingClientRect();
+  if (!(r.width > 0 && r.height > 0)) continue;
+  const tag = el.tagName;
+  const label = (tag === 'INPUT' || tag === 'SELECT')
+    ? '' : short(el.innerText || el.textContent);
+  seen.push([tag, el.type || '', el.id || '', el.name || '',
+             short(el.getAttribute('aria-label')), label].join('|'));
+  if (seen.length >= 40) break;
+}
+const frames = [...document.querySelectorAll('iframe')]
+  .map((f) => { try { return new URL(f.src, location.href).hostname; }
+                catch (e) { return 'inline'; } });
+return JSON.stringify({title: short(document.title), nodes: seen, frames: frames});
+"""
+
+
+def _log_diagnostic_page_shape(driver: Any, stage: str) -> None:
+    """Log the visible control *shape* of an identity page when explicitly enabled.
+
+    Emits tag/type/id/name/aria-label and short label text for visible controls,
+    never ``input.value``, never cookies, and never full page text. Any address
+    that reaches the dump is redacted. Enabled only by
+    ``WAKE_PDI_DEBUG_PAGE_SHAPE=1`` for operator-run diagnostic Jobs; unattended
+    scheduler runs leave it unset and log nothing extra.
+    """
+    if os.environ.get(_DIAGNOSTIC_PAGE_SHAPE_ENV) != "1":
+        return
+    try:
+        if urlparse(driver.current_url).hostname not in MFA_CODE_HOSTS:
+            logger.info("PAGE-SHAPE[%s]: not on a known identity host", stage)
+            return
+        raw = driver.execute_script(_DIAGNOSTIC_PAGE_SHAPE_SCRIPT)
+        logger.info(
+            "PAGE-SHAPE[%s] at %s: %s",
+            stage,
+            _safe_browser_location(driver),
+            _DIAGNOSTIC_EMAIL_PATTERN.sub("<redacted>", str(raw)),
+        )
+    except Exception as error:
+        logger.info("PAGE-SHAPE[%s] unavailable (%s)", stage, type(error).__name__)
+
+
 def _at_developer_portal(driver: Any) -> bool:
     """Return whether the browser reached the expected Portal host."""
     try:
@@ -413,6 +462,7 @@ def enter_credentials(driver: Any, username: str, password: str) -> bool:
         ])
         WebDriverWait(driver, 15).until(lambda d: signin_button.is_enabled())
         _click_resiliently(driver, signin_button)
+        _log_diagnostic_page_shape(driver, "after-password-submit")
         return True
     except Exception as error:
         logger.error(
@@ -516,6 +566,7 @@ def wait_for_login_completion(
             type(error).__name__,
             "%s; %s" % (_safe_browser_location(driver), _safe_browser_form_state(driver)),
         )
+        _log_diagnostic_page_shape(driver, "login-completion-timeout")
         return False
 
 def do_sign_in(
