@@ -64,6 +64,9 @@ AUTHENTICATOR_APP_LOCATORS = (
 MFA_CODE_PATTERN = re.compile(r"^[0-9]{4,12}$")
 MFA_TOTP_ACCOUNT_PATTERN = re.compile(r"^[^/\s@]+@[^/\s@]+$")
 MFA_TOTP_COMMAND = "mfa-vault-code"
+# In-cluster path: a mounted dir of per-account ServiceNow TOTP seeds (base32),
+# one file per configured email. Present only in unattended K3s; absent locally.
+MFA_TOTP_SECRET_DIR_ENV = "WAKE_PDI_TOTP_SECRET_DIR"
 MFA_TOTP_COMMAND_TIMEOUT_SECONDS = 10
 
 
@@ -209,6 +212,40 @@ def prompt_for_mfa_code() -> str | None:
     return code
 
 
+def _totp_code_from_sealed_seed(username: str) -> str | None:
+    """Compute a TOTP code from a provisioned per-account seed, if one is mounted.
+
+    Returns None when no seed dir/file exists, so the local mfa-vault-code path is
+    used unchanged. Only ServiceNow account seeds are ever placed in the seed dir.
+    """
+    directory = os.environ.get(MFA_TOTP_SECRET_DIR_ENV)
+    if not directory:
+        return None
+    # Kubernetes Secret keys cannot contain '@' or '/', so a mounted seed file is
+    # named by a sanitized form of the account. Try sanitized, then the raw email.
+    import re as _re
+    safe = _re.sub(r"[^A-Za-z0-9._-]", "_", username)
+    seed_path = None
+    for candidate in (os.path.join(directory, safe), os.path.join(directory, username)):
+        if os.path.isfile(candidate):
+            seed_path = candidate
+            break
+    if seed_path is None:
+        logger.error("No provisioned TOTP seed for the configured account")
+        return None
+    try:
+        from totp import generate_totp, TotpError
+        secret = open(seed_path, "r", encoding="utf-8").read().strip()
+        code = generate_totp(secret)
+    except (OSError, TotpError, Exception) as error:
+        logger.error("Provisioned TOTP generation failed (%s)", type(error).__name__)
+        return None
+    if not MFA_CODE_PATTERN.fullmatch(code):
+        logger.error("Provisioned TOTP produced an invalid code")
+        return None
+    return code
+
+
 def local_totp_code_for_account(username: str) -> str | None:
     """Return one local vault-generated code for a configured email account.
 
@@ -219,6 +256,10 @@ def local_totp_code_for_account(username: str) -> str | None:
     if not isinstance(username, str) or not MFA_TOTP_ACCOUNT_PATTERN.fullmatch(username):
         logger.error("Configured account cannot select a local MFA TOTP entry")
         return None
+
+    seeded = _totp_code_from_sealed_seed(username)
+    if seeded is not None:
+        return seeded
 
     executable = shutil.which(MFA_TOTP_COMMAND)
     if executable is None:

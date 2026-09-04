@@ -49,6 +49,7 @@ COPY --chown=appuser:appuser \
     mfa_vault.py \
     scheduler.py \
     session_store.py \
+    totp.py \
     utils.py \
     wake.py \
     ./
