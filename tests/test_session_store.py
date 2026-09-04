@@ -101,6 +101,56 @@ class DurableSessionStoreTests(unittest.TestCase):
         unavailable.assert_called_once()
         browser_sign_in.assert_not_called()
 
+    def test_scheduler_sign_in_requests_totp_only_when_it_is_enabled(self):
+        login_info = {"sn_dev_username": "user@example.invalid"}
+
+        default_sign_in = Mock(return_value="session")
+        self.assertEqual(
+            wake._session_for_account(
+                1,
+                "PDI_1",
+                login_info,
+                durable_session_only=False,
+                session_file=Path("/unused"),
+                do_sign_in=default_sign_in,
+            ),
+            "session",
+        )
+        default_sign_in.assert_called_once_with(login_info)
+
+        totp_sign_in = Mock(return_value="session")
+        self.assertEqual(
+            wake._session_for_account(
+                1,
+                "PDI_1",
+                login_info,
+                durable_session_only=False,
+                session_file=Path("/unused"),
+                do_sign_in=totp_sign_in,
+                mfa_totp=True,
+            ),
+            "session",
+        )
+        totp_sign_in.assert_called_once_with(login_info, mfa_totp=True)
+
+    def test_durable_only_mode_ignores_totp_and_never_signs_in(self):
+        browser_sign_in = Mock()
+        unavailable = Mock(side_effect=session_store.SessionStoreExpired("expired"))
+
+        self.assertIsNone(
+            wake._session_for_account(
+                1,
+                "PDI_1",
+                {"sn_dev_username": "user@example.invalid"},
+                durable_session_only=True,
+                session_file=Path("/unavailable/portal_sessions.enc"),
+                do_sign_in=browser_sign_in,
+                load_account_session=unavailable,
+                mfa_totp=True,
+            )
+        )
+        browser_sign_in.assert_not_called()
+
     def test_partial_capture_never_overwrites_an_existing_session_store(self):
         session = self._session()
         do_sign_in = Mock(side_effect=[session, None])
