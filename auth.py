@@ -38,6 +38,11 @@ MFA_CODE_LOCATORS = (
     (By.CSS_SELECTOR, 'input[autocomplete="one-time-code"]'),
 )
 AUTHENTICATOR_APP_LOCATORS = (
+    # Observed 2026 tenant: the "Change Multifactor Authentication Option" page
+    # offers one "Select" button per factor, identified only by an Okta factor
+    # slug on the button itself (flyout-okta_email, flyout-google_otp). Match the
+    # TOTP factor by that slug; its visible label is the generic word "Select".
+    (By.CSS_SELECTOR, "#flyout-google_otp"),
     # This tenant renders identical generic "Select" controls for each method.
     # Bind the control to the card with the exact Authenticator App label.
     (
@@ -531,6 +536,7 @@ def wait_for_login_completion(
         if state == "authenticator_app" and select_authenticator_app:
             if not _select_authenticator_app(driver):
                 return False
+            _log_diagnostic_page_shape(driver, "after-authenticator-app-selection")
             state = WebDriverWait(driver, MFA_CODE_COMPLETION_TIMEOUT_SECONDS).until(
                 _login_or_mfa_state
             )
