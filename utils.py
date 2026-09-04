@@ -200,7 +200,14 @@ def get_args():
         parser.error("--capture-sessions-stdout requires --capture-sessions")
     if args["mfa_code_prompt"] and not args["capture_sessions"]:
         parser.error("--mfa-code-prompt requires --capture-sessions")
-    if args["mfa_totp"] and not args["capture_sessions"]:
+    # --mfa-totp is also valid for unattended browser logins when a per-account
+    # TOTP seed is provisioned (WAKE_PDI_TOTP_SECRET_DIR), e.g. the K3s CronJob
+    # doing a full sign-in each run instead of replaying a short-lived session.
+    if (
+        args["mfa_totp"]
+        and not args["capture_sessions"]
+        and not (os.environ.get("WAKE_PDI_TOTP_SECRET_DIR") and args["auth_mode"] == "browser")
+    ):
         parser.error("--mfa-totp requires --capture-sessions")
     if args["mfa_code_prompt"] and args["mfa_totp"]:
         parser.error("--mfa-code-prompt and --mfa-totp cannot be used together")
