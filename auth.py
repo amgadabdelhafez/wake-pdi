@@ -38,6 +38,11 @@ MFA_CODE_LOCATORS = (
     (By.CSS_SELECTOR, 'input[autocomplete="one-time-code"]'),
 )
 AUTHENTICATOR_APP_LOCATORS = (
+    # Observed 2026 tenant: the "Change Multifactor Authentication Option" page
+    # offers one "Select" button per factor, identified only by an Okta factor
+    # slug on the button itself (flyout-okta_email, flyout-google_otp). Match the
+    # TOTP factor by that slug; its visible label is the generic word "Select".
+    (By.CSS_SELECTOR, "#flyout-google_otp"),
     # This tenant renders identical generic "Select" controls for each method.
     # Bind the control to the card with the exact Authenticator App label.
     (
@@ -64,6 +69,9 @@ AUTHENTICATOR_APP_LOCATORS = (
 MFA_CODE_PATTERN = re.compile(r"^[0-9]{4,12}$")
 MFA_TOTP_ACCOUNT_PATTERN = re.compile(r"^[^/\s@]+@[^/\s@]+$")
 MFA_TOTP_COMMAND = "mfa-vault-code"
+# In-cluster path: a mounted dir of per-account ServiceNow TOTP seeds (base32),
+# one file per configured email. Present only in unattended K3s; absent locally.
+MFA_TOTP_SECRET_DIR_ENV = "WAKE_PDI_TOTP_SECRET_DIR"
 MFA_TOTP_COMMAND_TIMEOUT_SECONDS = 10
 
 
@@ -99,6 +107,55 @@ def _safe_browser_form_state(driver: Any) -> str:
         return "controls=%s;iframe=%s" % (",".join(visible) or "none", iframe_present)
     except Exception:
         return "unavailable"
+
+
+_DIAGNOSTIC_PAGE_SHAPE_ENV = "WAKE_PDI_DEBUG_PAGE_SHAPE"
+_DIAGNOSTIC_EMAIL_PATTERN = re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+")
+_DIAGNOSTIC_PAGE_SHAPE_SCRIPT = """
+const seen = [];
+const short = (s) => (s || '').replace(/\\s+/g, ' ').trim().slice(0, 48);
+for (const el of document.querySelectorAll(
+    "button, a, input, select, [role='button'], h1, h2, h3")) {
+  const r = el.getBoundingClientRect();
+  if (!(r.width > 0 && r.height > 0)) continue;
+  const tag = el.tagName;
+  const label = (tag === 'INPUT' || tag === 'SELECT')
+    ? '' : short(el.innerText || el.textContent);
+  seen.push([tag, el.type || '', el.id || '', el.name || '',
+             short(el.getAttribute('aria-label')), label].join('|'));
+  if (seen.length >= 40) break;
+}
+const frames = [...document.querySelectorAll('iframe')]
+  .map((f) => { try { return new URL(f.src, location.href).hostname; }
+                catch (e) { return 'inline'; } });
+return JSON.stringify({title: short(document.title), nodes: seen, frames: frames});
+"""
+
+
+def _log_diagnostic_page_shape(driver: Any, stage: str) -> None:
+    """Log the visible control *shape* of an identity page when explicitly enabled.
+
+    Emits tag/type/id/name/aria-label and short label text for visible controls,
+    never ``input.value``, never cookies, and never full page text. Any address
+    that reaches the dump is redacted. Enabled only by
+    ``WAKE_PDI_DEBUG_PAGE_SHAPE=1`` for operator-run diagnostic Jobs; unattended
+    scheduler runs leave it unset and log nothing extra.
+    """
+    if os.environ.get(_DIAGNOSTIC_PAGE_SHAPE_ENV) != "1":
+        return
+    try:
+        if urlparse(driver.current_url).hostname not in MFA_CODE_HOSTS:
+            logger.info("PAGE-SHAPE[%s]: not on a known identity host", stage)
+            return
+        raw = driver.execute_script(_DIAGNOSTIC_PAGE_SHAPE_SCRIPT)
+        logger.info(
+            "PAGE-SHAPE[%s] at %s: %s",
+            stage,
+            _safe_browser_location(driver),
+            _DIAGNOSTIC_EMAIL_PATTERN.sub("<redacted>", str(raw)),
+        )
+    except Exception as error:
+        logger.info("PAGE-SHAPE[%s] unavailable (%s)", stage, type(error).__name__)
 
 
 def _at_developer_portal(driver: Any) -> bool:
@@ -209,6 +266,40 @@ def prompt_for_mfa_code() -> str | None:
     return code
 
 
+def _totp_code_from_sealed_seed(username: str) -> str | None:
+    """Compute a TOTP code from a provisioned per-account seed, if one is mounted.
+
+    Returns None when no seed dir/file exists, so the local mfa-vault-code path is
+    used unchanged. Only ServiceNow account seeds are ever placed in the seed dir.
+    """
+    directory = os.environ.get(MFA_TOTP_SECRET_DIR_ENV)
+    if not directory:
+        return None
+    # Kubernetes Secret keys cannot contain '@' or '/', so a mounted seed file is
+    # named by a sanitized form of the account. Try sanitized, then the raw email.
+    import re as _re
+    safe = _re.sub(r"[^A-Za-z0-9._-]", "_", username)
+    seed_path = None
+    for candidate in (os.path.join(directory, safe), os.path.join(directory, username)):
+        if os.path.isfile(candidate):
+            seed_path = candidate
+            break
+    if seed_path is None:
+        logger.error("No provisioned TOTP seed for the configured account")
+        return None
+    try:
+        from totp import generate_totp, TotpError
+        secret = open(seed_path, "r", encoding="utf-8").read().strip()
+        code = generate_totp(secret)
+    except (OSError, TotpError, Exception) as error:
+        logger.error("Provisioned TOTP generation failed (%s)", type(error).__name__)
+        return None
+    if not MFA_CODE_PATTERN.fullmatch(code):
+        logger.error("Provisioned TOTP produced an invalid code")
+        return None
+    return code
+
+
 def local_totp_code_for_account(username: str) -> str | None:
     """Return one local vault-generated code for a configured email account.
 
@@ -219,6 +310,10 @@ def local_totp_code_for_account(username: str) -> str | None:
     if not isinstance(username, str) or not MFA_TOTP_ACCOUNT_PATTERN.fullmatch(username):
         logger.error("Configured account cannot select a local MFA TOTP entry")
         return None
+
+    seeded = _totp_code_from_sealed_seed(username)
+    if seeded is not None:
+        return seeded
 
     executable = shutil.which(MFA_TOTP_COMMAND)
     if executable is None:
@@ -300,6 +395,32 @@ def _first_visible(driver: Any, wait: int, locators) -> Any:
     raise last_error
 
 
+def _click_resiliently(driver: Any, element: Any) -> None:
+    """Click a control that an async widget may momentarily overlay.
+
+    The sign-in page loads a chat widget after the form, so a native click can
+    race with it (ElementClickInterceptedException). Scroll the control into
+    view and retry; fall back to a scripted click on the SAME element. The
+    button was enabled by real key events, so this only replaces the final tap.
+    """
+    from selenium.common.exceptions import ElementClickInterceptedException
+
+    try:
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
+    except Exception:
+        pass
+    try:
+        element.click()
+        return
+    except ElementClickInterceptedException:
+        logger.info("Submit click was intercepted; retrying on the same control")
+    try:
+        element.click()
+        return
+    except ElementClickInterceptedException:
+        driver.execute_script("arguments[0].click();", element)
+
+
 def enter_credentials(driver: Any, username: str, password: str) -> bool:
     """Enter login credentials and submit.
 
@@ -324,7 +445,7 @@ def enter_credentials(driver: Any, username: str, password: str) -> bool:
             (By.ID, "username_submit_button"),   # legacy flow
         ])
         WebDriverWait(driver, 15).until(lambda d: next_button.is_enabled())
-        next_button.click()
+        _click_resiliently(driver, next_button)
     except Exception as error:
         logger.error(
             "Portal identifier stage failed (%s at %s)",
@@ -345,7 +466,8 @@ def enter_credentials(driver: Any, username: str, password: str) -> bool:
             (By.ID, "password_submit_button"),          # legacy flow
         ])
         WebDriverWait(driver, 15).until(lambda d: signin_button.is_enabled())
-        signin_button.click()
+        _click_resiliently(driver, signin_button)
+        _log_diagnostic_page_shape(driver, "after-password-submit")
         return True
     except Exception as error:
         logger.error(
@@ -414,6 +536,7 @@ def wait_for_login_completion(
         if state == "authenticator_app" and select_authenticator_app:
             if not _select_authenticator_app(driver):
                 return False
+            _log_diagnostic_page_shape(driver, "after-authenticator-app-selection")
             state = WebDriverWait(driver, MFA_CODE_COMPLETION_TIMEOUT_SECONDS).until(
                 _login_or_mfa_state
             )
@@ -449,6 +572,7 @@ def wait_for_login_completion(
             type(error).__name__,
             "%s; %s" % (_safe_browser_location(driver), _safe_browser_form_state(driver)),
         )
+        _log_diagnostic_page_shape(driver, "login-completion-timeout")
         return False
 
 def do_sign_in(

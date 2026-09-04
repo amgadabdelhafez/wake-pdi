@@ -107,6 +107,7 @@ def _session_for_account(
     session_file: Path,
     do_sign_in,
     load_account_session=None,
+    mfa_totp: bool = False,
 ):
     """Return an authenticated account session without weakening durable-only mode."""
     if durable_session_only:
@@ -119,6 +120,10 @@ def _session_for_account(
                 error,
             )
             return None
+    if mfa_totp:
+        # Unattended TOTP sign-in for the in-cluster refresher. The code source is
+        # a provisioned per-account seed; auth.py fails closed when none is mounted.
+        return do_sign_in(login_info, mfa_totp=True)
     return do_sign_in(login_info)
 
 
@@ -227,6 +232,7 @@ def main() -> int:
             session_file=session_file,
             do_sign_in=do_sign_in,
             load_account_session=load_account_session if durable_session_only else None,
+            mfa_totp=bool(args.get("mfa_totp")),
         )
         if session is None:
             logger.error("Account %d could not authenticate", account_number)

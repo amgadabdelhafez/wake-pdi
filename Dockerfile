@@ -17,6 +17,8 @@ RUN apt-get update \
         ca-certificates \
         curl \
         firefox-esr \
+        xvfb \
+        xauth \
         tar \
         tini \
     && curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
@@ -49,6 +51,8 @@ COPY --chown=appuser:appuser \
     mfa_vault.py \
     scheduler.py \
     session_store.py \
+    totp.py \
+    sso_probe.py \
     utils.py \
     wake.py \
     ./
