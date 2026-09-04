@@ -341,6 +341,32 @@ def _first_visible(driver: Any, wait: int, locators) -> Any:
     raise last_error
 
 
+def _click_resiliently(driver: Any, element: Any) -> None:
+    """Click a control that an async widget may momentarily overlay.
+
+    The sign-in page loads a chat widget after the form, so a native click can
+    race with it (ElementClickInterceptedException). Scroll the control into
+    view and retry; fall back to a scripted click on the SAME element. The
+    button was enabled by real key events, so this only replaces the final tap.
+    """
+    from selenium.common.exceptions import ElementClickInterceptedException
+
+    try:
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
+    except Exception:
+        pass
+    try:
+        element.click()
+        return
+    except ElementClickInterceptedException:
+        logger.info("Submit click was intercepted; retrying on the same control")
+    try:
+        element.click()
+        return
+    except ElementClickInterceptedException:
+        driver.execute_script("arguments[0].click();", element)
+
+
 def enter_credentials(driver: Any, username: str, password: str) -> bool:
     """Enter login credentials and submit.
 
@@ -365,7 +391,7 @@ def enter_credentials(driver: Any, username: str, password: str) -> bool:
             (By.ID, "username_submit_button"),   # legacy flow
         ])
         WebDriverWait(driver, 15).until(lambda d: next_button.is_enabled())
-        next_button.click()
+        _click_resiliently(driver, next_button)
     except Exception as error:
         logger.error(
             "Portal identifier stage failed (%s at %s)",
@@ -386,7 +412,7 @@ def enter_credentials(driver: Any, username: str, password: str) -> bool:
             (By.ID, "password_submit_button"),          # legacy flow
         ])
         WebDriverWait(driver, 15).until(lambda d: signin_button.is_enabled())
-        signin_button.click()
+        _click_resiliently(driver, signin_button)
         return True
     except Exception as error:
         logger.error(
