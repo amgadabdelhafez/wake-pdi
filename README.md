@@ -35,10 +35,32 @@ page-load boundary and applies a 45-second navigation timeout. The scheduler
 then waits explicitly for the Portal's own sign-in controls. This keeps a
 blocked tracking resource from holding a daily reconciliation indefinitely.
 
-## Durable Portal session route
+## Unattended sign-in (deployed route)
 
-An unattended Kubernetes Job cannot complete the emailed MFA challenge. Its
-only supported route is an explicitly captured, encrypted Portal-session store.
+The Kubernetes CronJob signs in on every run using a provisioned per-account
+TOTP seed. `WAKE_PDI_TOTP_SECRET_DIR` points at a read-only directory holding
+one base32 seed per configured account, named by a sanitized form of the
+address because Kubernetes Secret keys cannot contain `@`. When that variable
+is unset the local `mfa-vault-code` helper is used instead, so local runs are
+unchanged; when it is set but a configured account has no seed, sign-in fails
+closed. Only ServiceNow account seeds belong in that directory.
+
+Two runtime requirements come with it. The identity provider does not complete
+its factor flow in Firefox's headless mode, so the container runs Firefox under
+`xvfb-run` on a virtual display with `CHROME_HEADLESS=false`. That setting also
+selects the 600-second interactive login window, so an unattended Job must bound
+it with `WAKE_PDI_LOGIN_COMPLETION_TIMEOUT_SECONDS`.
+
+`WAKE_PDI_DEBUG_PAGE_SHAPE=1` logs the visible control shape of an identity page
+(tag, type, id, name, aria-label, and short label text) plus headings and iframe
+hostnames, on the known identity hosts only. It never reads input values and
+redacts any address in its output. Leave it unset outside diagnostic runs.
+
+## Durable Portal session route (superseded)
+
+This was the previous unattended route and is no longer mounted in the deployed
+CronJob. It remains supported for local and diagnostic use. It is an explicitly
+captured, encrypted Portal-session store.
 This is a compact requests-session record containing the Portal cookies and
 Developer Portal token needed by the status and direct-wake API. It is not a
 browser profile and does not contain browser cache, history, or saved form
@@ -54,7 +76,8 @@ requests a code. It derives `servicenow/<configured-email>` for each configured
 account, accepts only a 4 to 12 digit result, and invokes the helper without a
 shell. Neither mode logs or retains the code, submits it only to a recognized
 visible ServiceNow or Google one-time-code field, and operates only in the
-local visible-browser capture flow, never in K3s. WakePDI validates Portal
+local visible-browser capture flow. The seeded variant above is the K3s route.
+WakePDI validates Portal
 status before including an account in the new store. If any account fails, it
 emits no session data and preserves any prior store.
 
