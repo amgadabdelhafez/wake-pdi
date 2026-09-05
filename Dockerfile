@@ -52,7 +52,6 @@ COPY --chown=appuser:appuser \
     scheduler.py \
     session_store.py \
     totp.py \
-    sso_probe.py \
     utils.py \
     wake.py \
     ./
